@@ -1,4 +1,6 @@
 steps:
+  - name: 'gcr.io/cloud-builders/wget'
+    args: ["https://releases.hashicorp.com/packer/${_PACKER_VERSION}/packer_${_PACKER_VERSION}_linux_amd64.zip"]
   # Build and publish the Packer image using Docker
   - name: 'gcr.io/cloud-builders/docker'
     args: [
