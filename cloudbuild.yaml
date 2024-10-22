@@ -1,0 +1,85 @@
+steps:
+  # Step 1: Retrieve the certificates from Secret Manager
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        gcloud secrets versions access latest --secret=my-certificate-secret > /workspace/certificate.pem
+
+  # Step 2: Create a new VM (golden VM) from a public or custom image
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - compute
+      - instances
+      - create
+      - golden-vm
+      - --image-family=debian-10
+      - --image-project=debian-cloud
+      - --zone=us-east1-b
+      - --tags=golden-vm
+      - --labels=project=golden-image,date=$(date +%Y-%m-%d)
+
+  # Step 3: Customize the VM (run Ansible playbook, etc.)
+  - name: gcr.io/cloud-builders/ansible
+    args:
+      - ansible-playbook
+      - /workspace/playbook.yml
+    volumes:
+      - name: certificates
+        path: /workspace/certificate.pem
+
+  # Step 4: Stop the golden VM and remove the auto-delete disk option
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - compute
+      - instances
+      - stop
+      - golden-vm
+      - --zone=us-east1-b
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - compute
+      - instances
+      - set-disk-auto-delete
+      - golden-vm
+      - --no-auto-delete
+      - --zone=us-east1-b
+
+  # Step 5: Release the golden image (conditionally based on SHOULD_RELEASE variable)
+  - name: gcr.io/cloud-builders/gcloud
+    id: "release-image"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        if [ "$_SHOULD_RELEASE" = "true" ]; then
+          echo "Releasing the golden image..."
+          gcloud compute images create golden-image-$(date +%Y%m%d-%H%M%S) \
+            --source-disk=golden-vm \
+            --source-disk-zone=us-east1-b \
+            --family=golden-images \
+            --description="Golden image created on $(date +%Y-%m-%d)" \
+            --guest-os-features="MULTI_IP_SUBNET" \
+            --labels=project=golden-image,date=$(date +%Y-%m-%d) \
+            --storage-location=us
+          # Deprecate the previous image
+          gcloud compute images deprecate <previous-image-name> --state=DEPRECATED
+        else
+          echo "Skipping image release."
+        fi
+
+# Optional timeout for the build (30 minutes)
+timeout: "1800s"
+
+# Substitution variables (SHOULD_RELEASE can be set in the UI or via gcloud)
+substitutions:
+  _SHOULD_RELEASE: "false"
+
+# Service account with appropriate roles
+serviceAccount: projects/my-project/serviceAccounts/cloud-build-sa@my-project.iam.gserviceaccount.com
+
+# Optional: Private pool configuration if needed
+options:
+  pool:
+    name: private-pool
