@@ -1,85 +1,123 @@
 steps:
-  # Step 1: Retrieve the certificates from Secret Manager
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: "bash"
+  # Step 1: Set up Terraform
+  - name: 'hashicorp/terraform:light'
+    entrypoint: 'bash'
     args:
-      - "-c"
+      - '-c'
       - |
-        gcloud secrets versions access latest --secret=my-certificate-secret > /workspace/certificate.pem
+        terraform init
+        terraform plan -out=tfplan
 
-  # Step 2: Create a new VM (golden VM) from a public or custom image
-  - name: gcr.io/cloud-builders/gcloud
+  # Step 2: Apply Terraform Configuration
+  - name: 'hashicorp/terraform:light'
+    entrypoint: 'bash'
     args:
-      - compute
-      - instances
-      - create
-      - golden-vm
-      - --image-family=debian-10
-      - --image-project=debian-cloud
-      - --zone=us-east1-b
-      - --tags=golden-vm
-      - --labels=project=golden-image,date=$(date +%Y-%m-%d)
-
-  # Step 3: Customize the VM (run Ansible playbook, etc.)
-  - name: gcr.io/cloud-builders/ansible
-    args:
-      - ansible-playbook
-      - /workspace/playbook.yml
-    volumes:
-      - name: certificates
-        path: /workspace/certificate.pem
-
-  # Step 4: Stop the golden VM and remove the auto-delete disk option
-  - name: gcr.io/cloud-builders/gcloud
-    args:
-      - compute
-      - instances
-      - stop
-      - golden-vm
-      - --zone=us-east1-b
-  - name: gcr.io/cloud-builders/gcloud
-    args:
-      - compute
-      - instances
-      - set-disk-auto-delete
-      - golden-vm
-      - --no-auto-delete
-      - --zone=us-east1-b
-
-  # Step 5: Release the golden image (conditionally based on SHOULD_RELEASE variable)
-  - name: gcr.io/cloud-builders/gcloud
-    id: "release-image"
-    entrypoint: "bash"
-    args:
-      - "-c"
+      - '-c'
       - |
-        if [ "$_SHOULD_RELEASE" = "true" ]; then
-          echo "Releasing the golden image..."
-          gcloud compute images create golden-image-$(date +%Y%m%d-%H%M%S) \
-            --source-disk=golden-vm \
-            --source-disk-zone=us-east1-b \
-            --family=golden-images \
-            --description="Golden image created on $(date +%Y-%m-%d)" \
-            --guest-os-features="MULTI_IP_SUBNET" \
-            --labels=project=golden-image,date=$(date +%Y-%m-%d) \
-            --storage-location=us
-          # Deprecate the previous image
-          gcloud compute images deprecate <previous-image-name> --state=DEPRECATED
+        terraform apply -auto-approve tfplan
+
+  # Step 3: Retrieve Certificates from Secret Manager
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        mkdir -p /workspace/secrets
+        gcloud secrets versions access latest --secret=your-secret-name > /workspace/secrets/certificates.pem  # Save to file
+
+  # Step 4: Build the Python Cloud Function
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        zip -r lifecycle_handler.py.zip lifecycle_handler.py
+
+  # Step 5: Upload the Cloud Function ZIP to the Cloud Storage Bucket
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - 'gsutil'
+      - 'cp'
+      - 'lifecycle_handler.py.zip'
+      - 'gs://$PROJECT_ID/your-cloud-function-bucket/lifecycle_handler.py.zip'
+
+  # Step 6: Run Ansible Playbook
+  - name: 'ansible/ansible:latest'  # Use a suitable Ansible image
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        ansible-playbook your_playbook.yml -i inventory_file --extra-vars="certificates_path=/workspace/secrets/certificates.pem"
+
+  # Step 7: Create Golden Image
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - 'gcloud'
+      - 'compute'
+      - 'images'
+      - 'create'
+      - '${_GOLDEN_IMAGE_NAME}'  # The name of your golden image
+      - '--source-disk'
+      - '${_GOLDEN_VM_NAME}'  # The name of your golden VM
+      - '--source-disk-zone'
+      - '${_ZONE}'  # The zone where your VM is located
+      - '--family'
+      - '${_IMAGE_FAMILY}'  # Optional: Image family to organize images
+      - '--quiet'
+
+  # Step 8: Stop the Golden VM
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - 'gcloud'
+      - 'compute'
+      - 'instances'
+      - 'stop'
+      - '${_GOLDEN_VM_NAME}'  # The name of your golden VM
+      - '--zone'
+      - '${_ZONE}'  # The zone where your VM is located
+
+  # Step 9: Conditionally Release the Golden Image
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [[ "${_SHOULD_RELEASE}" == "true" ]]; then
+          gcloud compute images add-iam-policy-binding ${_GOLDEN_IMAGE_NAME} \
+            --member="serviceAccount:${_SERVICE_ACCOUNT_EMAIL}" \
+            --role="roles/compute.imageUser" \
+            --quiet
+          echo "Golden image released: ${_GOLDEN_IMAGE_NAME}"
         else
-          echo "Skipping image release."
+          echo "Golden image not released due to SHOULD_RELEASE being false."
         fi
 
-# Optional timeout for the build (30 minutes)
-timeout: "1800s"
+  # Step 10: Deploy Cloud Function
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - '${_CLOUD_FUNCTION_NAME}'
+      - '--entry-point'
+      - 'handler'
+      - '--runtime'
+      - 'python39'  # Adjust as needed
+      - '--trigger-http'
+      - '--source'
+      - 'gs://$PROJECT_ID/your-cloud-function-bucket/lifecycle_handler.py.zip'
+      - '--memory'
+      - '256MB'
+      - '--timeout'
+      - '60s'
+      - '--quiet'
 
-# Substitution variables (SHOULD_RELEASE can be set in the UI or via gcloud)
+# Substitutions to be used in the build
 substitutions:
-  _SHOULD_RELEASE: "false"
-
-# Service account with appropriate roles
-serviceAccount: projects/my-project/serviceAccounts/cloud-build-sa@my-project.iam.gserviceaccount.com
-
-# Optional: Private pool configuration if needed
-options:
-  pool:
-    name: private-pool
+  _CLOUD_FUNCTION_NAME: 'image-lifecycle-function'  # Name of your Cloud Function
+  _GOLDEN_VM_NAME: 'your-golden-vm-name'  # Name of your golden VM
+  _GOLDEN_IMAGE_NAME: 'your-golden-image-name'  # Name of your golden image
+  _ZONE: 'us-central1-a'  # Adjust to your VM's zone
+  _IMAGE_FAMILY: 'your-image-family'  # Optional
+  _SHOULD_RELEASE: 'false'  # Set this variable to true to release the image
+  _SERVICE_ACCOUNT_EMAIL: 'your-service-account-email@your-project-id.iam.gserviceaccount.com'  # Service account for IAM policy binding
