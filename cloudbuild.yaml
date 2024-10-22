@@ -20,12 +20,12 @@ images:
   - 'gcr.io/$PROJECT_ID/packer:${_PACKER_VERSION}'
 tags: ['cloud-builders-community']
 
-- name: 'gcr.io/$PROJECT_ID/packer'
-  args:
-  - init
-  - packer.pkr.hcl
-- name: 'gcr.io/$PROJECT_ID/packer'
-  args:
-  - build
-  - packer.pkr.hcl
+  - name: 'gcr.io/$PROJECT_ID/packer'
+    args:
+    - init
+    - packer.pkr.hcl
+  - name: 'gcr.io/$PROJECT_ID/packer'
+    args:
+    - build
+    - packer.pkr.hcl
 tags: ['cloud-builders-community']
