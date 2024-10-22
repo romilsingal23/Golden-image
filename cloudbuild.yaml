@@ -23,11 +23,9 @@ tags: ['cloud-builders-community']
 - name: 'gcr.io/$PROJECT_ID/packer'
   args:
   - init
-  - -var-file=variables.pkrvars.hcl
-  - build.pkr.hcl
+  - packer.pkr.hcl
 - name: 'gcr.io/$PROJECT_ID/packer'
   args:
   - build
-  - -var-file=variables.pkrvars.hcl
-  - build.pkr.hcl
+  - packer.pkr.hcl
 tags: ['cloud-builders-community']
