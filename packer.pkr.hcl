@@ -11,7 +11,7 @@ variable "region" {
 
 variable "zone" {
   type    = string
-  default = "us-east1-b"
+  default = "us-east1-c"
 }
 
 variable "vpc_name" {
@@ -32,22 +32,31 @@ source "googlecompute" "golden_image" {
   machine_type        = "n1-standard-1"
   subnetwork          = var.subnet_name
   network             = var.vpc_name
-  use_internal_ip     = true
   image_name          = "golden-image-${formatdate("YYYYMMDDHHMM", timestamp())}"
   image_family        = "golden-family"
+  #use_internal_ip    = true
+  #omit_external_ip   = true
+  #use_iap            = true
+  #use_os_login       = true
+  #metadata = {
+  #  block-project-ssh-keys = "true"
+  #}
+  tags = ["allow-ssh"]
+
 }
 
 build {
   sources = ["source.googlecompute.golden_image"]
 
-  provisioner "ansible" {
+  provisioner "shell" {
+   inline = [
+    "sudo yum -y update",
+    "sudo dnf -y install ansible-core"
+   ]
+ }
+
+  provisioner "ansible-local" {
     playbook_file = "./playbook.yml"
   }
 
-  provisioner "shell" {
-    inline = [
-      "gcloud secrets versions access latest --secret='certificate-secret' > /etc/ssl/certs/cert.pem",
-      "gcloud secrets versions access latest --secret='private-key-secret' > /etc/ssl/private/key.pem"
-    ]
-  }
 }
