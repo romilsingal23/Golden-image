@@ -4,7 +4,6 @@ import logging
 from datetime import datetime, timezone
 from google.cloud import storage
 from googleapiclient import discovery
-from google.oauth2 import service_account
 
 # Project name and bucket variables
 project_name = os.getenv('PROJECT_NAME', 'project_name')
@@ -14,12 +13,9 @@ supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', 'error')
 logger = logging.getLogger()
 logger.setLevel("INFO")
 
-# Google Cloud clients
-credentials = service_account.Credentials.from_service_account_file(
-    os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-)
-cloudbuild_client = discovery.build('cloudbuild', 'v1', credentials=credentials)
-storage_client = storage.Client(credentials=credentials)
+# Google Cloud clients (no explicit credentials needed in Cloud Functions)
+cloudbuild_client = discovery.build('cloudbuild', 'v1')
+storage_client = storage.Client()
 
 def trigger_build(client, image_name, image):
     start_time = datetime.now(timezone.utc)
