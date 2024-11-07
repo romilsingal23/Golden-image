@@ -1,14 +1,14 @@
 packer {
   required_plugins {
-    google = {
+    googlecompute = {
       version = ">= 1.0.0"
-      source  = "github.com/hashicorp/google"
+      source  = "github.com/hashicorp/googlecompute"
     }
   }
 }
 
 locals {
-  gcp_image_tags = {
+  image_tags = {
     "OSDistribution" = "${var.image_family}"
     "Contact"        = "HCC_CDTK@ds.uhc.com"
     "AppName"        = "CDTK Golden Images"
@@ -18,7 +18,7 @@ locals {
     "TaggingVersion" = "v1.0.1"
     "ImageType"      = "ApprovedOptumGoldenImage"
   }
-  build_tags = merge({ "Name" = "${var.namespace-}builder-${var.image_family}" }, local.gcp_image_tags)
+  build_tags = merge({ "Name" = "${var.namespace_dash}builder-${var.image_family}" }, local.image_tags)
 }
 
 variable "namespace" {
@@ -26,7 +26,7 @@ variable "namespace" {
   default = env("namespace")
 }
 
-variable "namespace-" {
+variable "namespace_dash" {
   type    = string
   default = env("namespacedash")
 }
@@ -56,26 +56,6 @@ variable "os_arch" {
   default = env("os_arch")
 }
 
-variable "os_virtualization" {
-  type    = string
-  default = env("os_virtualization")
-}
-
-variable "os_mapping" {
-  type    = string
-  default = env("os_mapping")
-}
-
-variable "os_device" {
-  type    = string
-  default = env("os_device")
-}
-
-variable "os_root_volume" {
-  type    = string
-  default = env("os_root_volume")
-}
-
 variable "ssh_user" {
   type    = string
   default = env("ssh_user")
@@ -96,19 +76,9 @@ variable "kms_key" {
   default = env("kms_key")
 }
 
-variable "security_group" {
+variable "project_id" {
   type    = string
-  default = env("security_group")
-}
-
-variable "instance_profile" {
-  type    = string
-  default = env("instance_profile")
-}
-
-variable "org_arns" {
-  type    = string
-  default = env("org_arns")
+  default = env("project_id")
 }
 
 variable "date_created" {
@@ -116,33 +86,23 @@ variable "date_created" {
   default = env("date_created")
 }
 
-variable "gcp_project" {
-  type    = string
-  default = env("gcp_project")
-}
-
-variable "gcp_image_regions" {
-  type    = string
-  default = env("gcp_image_regions")
-}
-
 locals {
-  instance_type  = (var.os_arch=="arm64") ? "e2-small" : "e2-medium"
+  instance_type  = (var.os_arch == "arm64") ? "e2-medium" : "e2-small"
   use_proxy_flag = false
 }
 
 build {
   sources = [
-    "source.google.compute_image.golden_gcp_image_build_specs"
+    "source.googlecompute.golden_image_build_specs"
   ]
 
   provisioner "file" {
     source = "certs"
     destination = "/tmp/"
   }
-  
+
   provisioner "file" {
-    sources = ["/tmp/UHG_Cloud_Linux_Server-snowagent-7.0.1-x64.deb","/tmp/UHG_Cloud_Linux_Server-snowagent-7.0.1-x64.rpm"]
+    sources = ["/tmp/UHG_Cloud_Linux_Server-snowagent-7.0.1-x64.deb", "/tmp/UHG_Cloud_Linux_Server-snowagent-7.0.1-x64.rpm"]
     destination = "/tmp/"
   }
 
@@ -184,11 +144,8 @@ build {
       "--extra-vars", "image_family=${var.image_family}",
       "--extra-vars", "architecture=${var.os_arch}",
       "--extra-vars", "gcp_build_instance_id=${build.ID}",
-      "--extra-vars", "image_regions=${join(",", jsondecode(var.gcp_image_regions))}",
       "--extra-vars", "os_type=${var.os_type}",
-      "--extra-vars", "gcp_image_name=${var.namespace-}optum/${var.image_family}_${var.date_created}",
-      "--extra-vars", "src_img_id=${build.SourceImage}",
-      "--extra-vars", "src_img=${build.SourceImageName}",
+      "--extra-vars", "gcp_image_name=${var.namespace_dash}optum/${var.image_family}_${var.date_created}",
       "--extra-vars", "date_created=${var.date_created}"
     ]
   }
@@ -200,51 +157,43 @@ build {
       "image_family=${var.image_family}"
     ]
   }
+
   provisioner "shell" {
     expect_disconnect = true
     inline = [
       "if [[ $image_family != 'RHEL_9' && $image_family != 'ARM_RHEL_9' ]]; then",
       " echo rebooting ", 
       "sudo /sbin/reboot",
-      "taskkill /im sshd.exe /f",
       "fi"
     ] 
     environment_vars = [
       "image_family=${var.image_family}"
     ]
-    pause_after       = "5m"
+    pause_after = "5m"
   }
 }
 
-source "google.compute_image" "golden_gcp_image_build_specs" {
-  image_name             = "${var.namespace-}optum/${var.image_family}_${var.date_created}"
-  image_description      = "HCC Golden Image for ${var.image_family}"
-  project_id             = "${var.gcp_project}"
-  source_image_family    = "${var.os_name}"
-  source_image_project  = "${var.os_owner}"
-  network               = "${var.network}"
-  subnetwork            = "${var.subnet}"
-  tags                  = local.gcp_image_tags
-  boot_disk {
-    initialize_params {
-      image = "${var.os_mapping}"
-      size  = 50
-    }
-  }
-  labels                = local.build_tags
-  machine_type          = local.instance_type
-  metadata              = {
-    "ssh-keys" = "${var.ssh_user}:${var.ssh_key}"
+source "googlecompute" "golden_image_build_specs" {
+  project_id          = "${var.project_id}"
+  source_image_family = "${var.os_name}"
+  source_image_project = "${var.os_owner}"
+  machine_type        = local.instance_type
+  zone                = "us-central1-a"
+  network             = "${var.network}"
+  subnetwork          = "${var.subnet}"
+  tags                = local.build_tags
+  service_account {
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
   disk {
-    auto_delete = true
-    boot        = true
-    size_gb     = 50
-    type        = "pd-ssd"
+    image  = "${var.os_name}"
+    type   = "pd-ssd"
+    size   = 50
+    labels = local.image_tags
+    encrypt = true
+    kms_key_name = "${var.kms_key}"
   }
-  encryption_key {
-    kms_key_name = var.kms_key
+  metadata = {
+    ssh-keys = "packer:${var.ssh_user}"
   }
-  zone                  = "us-central1-a"
-  tags                  = local.gcp_image_tags
 }
