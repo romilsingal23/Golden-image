@@ -1,0 +1,52 @@
+steps:
+  # Step 1: Install Packer
+  - name: "ubuntu"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        echo "Installing Packer..."
+        curl -qL -o packer.zip https://releases.hashicorp.com/packer/1.8.2/packer_1.8.2_linux_amd64.zip
+        unzip packer.zip
+        mv packer /usr/local/bin/packer
+        packer version
+
+  # Step 2: Install Ansible and other dependencies
+  - name: "python"
+    entrypoint: "pip"
+    args:
+      - "install"
+      - "ansible==2.10"
+      - "requests"
+      - "loguru"
+      - "pywinrm"
+      - "pyyaml"
+      - "aws_requests_auth"
+      - "azure.identity"
+      - "azure.storage.blob"
+
+  # Step 3: Run the execute_packer.sh script
+  - name: "ubuntu"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        echo "Running execute_packer.sh..."
+        chmod +x ./execute_packer.sh
+        ./execute_packer.sh
+
+  # Step 4: Deploy the Cloud Function
+  - name: "gcr.io/cloud-builders/gcloud"
+    args:
+      - "functions"
+      - "deploy"
+      - "my-cloud-function"          # Replace with your Cloud Function name
+      - "--region=us-east1"           # Replace with your region
+      - "--runtime=python310"         # Replace with your runtime
+      - "--trigger-http"              # Use the appropriate trigger type
+      - "--allow-unauthenticated"     # Optional: for public access
+      - "--source=."                  # Source directory for the function code
+      - "--entry-point=main"          # Replace with your entry point if different
+
+# Optional: Specify the version for Cloud Build configuration
+# version: "0.2"
