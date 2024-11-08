@@ -2,68 +2,70 @@ import os
 import json
 import logging
 from datetime import datetime, timezone
-from google.cloud import storage
-from googleapiclient import discovery
+from google.cloud import storage, cloudbuild_v1
 
-# Project name and bucket variables
-project_name = os.getenv('PROJECT_NAME', 'project_name')
-supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', 'error')
-
-# Configure logging
+# Initialize logging
 logger = logging.getLogger()
 logger.setLevel("INFO")
 
-# Google Cloud clients (no explicit credentials needed in Cloud Functions)
-cloudbuild_client = discovery.build('cloudbuild', 'v1')
-storage_client = storage.Client()
+# Project and bucket settings
+project_id = os.getenv('GCP_PROJECT_ID', 'your_project_id')
+supported_images_bucket = os.getenv('supported_images_bucket', 'your_bucket_name')
 
-def trigger_build(client, image_name, image):
+# Initialize GCP clients
+storage_client = storage.Client()
+cloud_build_client = cloudbuild_v1.services.cloud_build.CloudBuildClient()
+
+def trigger_cloud_build(client, image_name, image):
     start_time = datetime.now(timezone.utc)
-    build_request = {
-        'projectId': project_name,
+
+    # Define the build configuration with substitutions
+    build_config = {
         'source': {
-            'storageSource': {
+            'storage_source': {
                 'bucket': supported_images_bucket,
-                'object': 'supported_images.json'
+                'object': 'path/to/your/codebuild.yaml'
             }
         },
         'substitutions': {
-            '_IMAGE_FAMILY': image_name,
+            '_IMAGE_FAMILY': image['image_family'],
             '_OS_TYPE': image['os_type'],
-            '_OS_OWNER': image['owner'],
-            '_OS_NAME': image['name_filter'],
-            '_OS_ARCH': image['architecture'],
-            '_OS_VIRTUALIZATION': image['virtualization_type'],
-            '_OS_MAPPING': image['device_mapping'],
-            '_OS_DEVICE': image['device_type'],
-            '_OS_ROOT_VOLUME': image['root_volume'],
+            '_IMAGE_PROJECT': image['image_project'],
+            '_IMAGE_NAME': image['image_name'],
+            '_ARCHITECTURE': image['architecture'],
+            '_DEVICE_TYPE': image['device_type'],
+            '_ROOT_VOLUME': image['root_volume'],
             '_SSH_USER': image['ssh_user'],
+            '_VIRTUALIZATION_TYPE': image['virtualization_type'],
             '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%d-%H%M%S')
         }
     }
 
-    try:
-        client.projects().builds().create(projectId=project_name, body=build_request).execute()
-        logger.info(f"Triggered build for image: {image_name}")
-    except Exception as e:
-        logger.error(f"Error triggering build for image {image_name}: {e}")
+    # Start the Cloud Build
+    response = client.create_build(project_id=project_id, build=build_config)
+    logger.info(f"Build triggered for {image_name} with build ID: {response.name}")
+    return response
 
-def handle():
+def handle(client):
     try:
-        # Reading the Cloud Storage object - supported images JSON file
-        bucket = storage_client.bucket(supported_images_bucket)
+        # Reading the JSON file from Google Cloud Storage
+        bucket = storage_client.get_bucket(supported_images_bucket)
         blob = bucket.blob('supported_images.json')
         file_content = blob.download_as_text()
     except Exception as e:
-        logger.error('Error while reading Cloud Storage object. Error - ' + str(e))
-        return {"statusCode": 500, "error": "Error while reading Cloud Storage object."}
+        logger.error(f"Error while reading GCS object: {str(e)}")
+        return {"statusCode": 500, "error": "Error while reading GCS object."}
 
+    # Load and parse JSON content
     image_list_content = json.loads(file_content)
     image_list = image_list_content.get('gcp', {})
 
+    # Trigger build for each image in the GCP list
     for name, image in image_list.items():
-        trigger_build(cloudbuild_client, name, image)
+        trigger_cloud_build(client, name, image)
+
     return {"statusCode": 200}
 
-def main(request):
-    return handle()
+# Main entry point for GCP (e.g., Cloud Function)
+def gcp_function_entry_point(event, context):
+    return handle(cloud_build_client)
