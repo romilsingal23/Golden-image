@@ -7,16 +7,14 @@ from google.cloud.devtools.cloudbuild_v1 import CloudBuildClient
 
 # Initialize logging
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
-# Environment variables
+# Environment variables with default values
 project_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
 supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', "dev-supported_images")  # GCS bucket name for JSON file
 
-# Google Cloud Storage client
+# Initialize Google Cloud clients
 storage_client = storage.Client()
-
-# Cloud Build client to trigger builds
 cloud_build_client = CloudBuildClient()
 
 
@@ -37,9 +35,9 @@ def trigger_cloud_build(client, image_name, image):
                 '_IMAGE_NAME': image['image_name'],
                 '_IMAGE_FAMILY': image['image_family'],
                 '_SOURCE_IMAGE': image.get('source_image'),
-                '_SSH_USERNAME': image.get('ssh_username'),
-                '_DISK_SIZE': image.get('disk_size'),
-                '_DATE_CREATED': datetime.strftime(start_time)
+                '_SSH_USERNAME': image.get('ssh_username', 'default-user'),  # Default username
+                '_DISK_SIZE': str(image.get('disk_size', 10)),  # Default disk size: 10GB
+                '_DATE_CREATED': start_time.strftime('%Y-%m-%dT%H:%M:%S')
             }
         }
 
@@ -57,8 +55,9 @@ def handle():
     """Process the supported_images.json file and trigger builds."""
     try:
         # Read the supported_images.json file from GCS
-        bucket = storage_client.bucket(dev-supported-images)
+        bucket = storage_client.bucket(supported_images_bucket)
         blob = bucket.blob('supported_images.json')
+        logger.info("Downloading supported_images.json...")
         file_content = blob.download_as_text()
 
         # Parse the JSON content
@@ -71,6 +70,7 @@ def handle():
 
         # Trigger Cloud Build for each image
         for name, image in image_list.items():
+            logger.info(f"Triggering build for image: {name}")
             trigger_cloud_build(cloud_build_client, name, image)
 
         return {"statusCode": 200, "message": "Builds triggered successfully"}
@@ -80,13 +80,12 @@ def handle():
         return {"statusCode": 500, "error": str(e)}
 
 
-def main(request):
+def main(request=None):
     """HTTP Cloud Function to handle requests."""
     try:
-        # Call the handle function
+        logger.info("Starting the main function...")
         response = handle()
-
-        # Return an HTTP response
+        logger.info(f"Function executed successfully. Response: {response}")
         return (
             json.dumps(response),
             response.get("statusCode", 500),
@@ -99,3 +98,16 @@ def main(request):
             500,
             {"Content-Type": "application/json"},
         )
+
+
+# Test block for local execution
+if __name__ == "__main__":
+    os.environ["PROJECT_ID"] = "your-project-id"  # Replace with your actual Project ID
+    os.environ["SUPPORTED_IMAGES_BUCKET"] = "your-bucket-name"  # Replace with your bucket name
+
+    try:
+        logger.info("Running main.py locally...")
+        response = handle()
+        logger.info(f"Response: {json.dumps(response, indent=4)}")
+    except Exception as e:
+        logger.error(f"An error occurred during local execution: {str(e)}")
