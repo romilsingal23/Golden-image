@@ -2,9 +2,7 @@ import os
 import json
 import logging
 from datetime import datetime, timezone
-from google.cloud import build_v1
 from google.cloud import storage
-from google.cloud.devtools import cloudbuild_v1
 from google.cloud.devtools.cloudbuild_v1 import CloudBuildClient
 
 # Initialize logging
@@ -12,8 +10,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Environment variables
-project_id = os.getenv('PROJECT_ID')  # Google Cloud Project ID
-supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET')  # GCS bucket name for JSON file
+project_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
+supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', "dev-supported_images")  # GCS bucket name for JSON file
 
 # Google Cloud Storage client
 storage_client = storage.Client()
