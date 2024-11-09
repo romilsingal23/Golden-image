@@ -11,9 +11,9 @@ logger.setLevel("INFO")
 
 # Environment variables
 project_id = os.getenv('PROJECT_ID', 'your-project-id')  # Google Cloud Project ID
-supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', 'your-bucket-name')  # S3 bucket name
+supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', 'your-bucket-name')  # GCS bucket name for JSON file
 
-# Google Cloud Storage client (used to read the JSON file from the bucket)
+# Google Cloud Storage client
 storage_client = storage.Client()
 
 # Cloud Build client to trigger builds
@@ -22,19 +22,25 @@ cloud_build_client = build_v1.CloudBuildClient()
 def trigger_cloud_build(client, image_name, image):
     start_time = datetime.now(timezone.utc)
 
-    # Define the build configuration for triggering the Packer build
+    # Define the build configuration to point to a zipped source containing cloudbuild.yaml
     build_config = {
+        'source': {
+            'storage_source': {
+                'bucket': supported_images_bucket,  # Bucket containing the .zip file
+                'object': 'path/to/cloudbuild.zip'  # Path to the .zip file in the bucket
+            }
+        },
         'substitutions': {
-            '_IMAGE_NAME': image['image_name'],  # Image name to create
-            '_IMAGE_FAMILY': image['image_family'],  # Image family
-            '_PROJECT_ID': project_id,  # Project ID where image will be created
-            '_ZONE': image.get('zone', 'us-central1-a'),  # Zone for the instance (default to 'us-central1-a')
-            '_SOURCE_IMAGE': image.get('source_image', 'debian-10-buster-v20210817'),  # Source image to use (default to a Debian image)
-            '_SSH_USERNAME': image.get('ssh_user', 'cloud-user'),  # SSH username, default 'cloud-user' if not provided
-            '_MACHINE_TYPE': image.get('machine_type', 'n1-standard-1'),  # Machine type (default to 'n1-standard-1')
-            '_DISK_SIZE': image.get('disk_size', 10),  # Disk size (default to 10 GB)
-            '_NETWORK': image.get('network', 'default'),  # Network configuration (default to 'default')
-            '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%d-%H%M%S')  # Timestamp of when the build is triggered
+            '_IMAGE_NAME': image['image_name'],
+            '_IMAGE_FAMILY': image['image_family'],
+            '_PROJECT_ID': project_id,
+            '_ZONE': image.get('zone', 'us-central1-a'),
+            '_SOURCE_IMAGE': image.get('source_image', 'debian-10-buster-v20210817'),
+            '_SSH_USERNAME': image.get('ssh_user', 'cloud-user'),
+            '_MACHINE_TYPE': image.get('machine_type', 'n1-standard-1'),
+            '_DISK_SIZE': image.get('disk_size', 10),
+            '_NETWORK': image.get('network', 'default'),
+            '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%d-%H%M%S')
         }
     }
 
@@ -43,12 +49,11 @@ def trigger_cloud_build(client, image_name, image):
     logger.info(f"Build triggered for {image_name} with build ID: {response.name}")
     return response
 
-
 def handle():
     try:
-        # Reading the supported_images.json file from Google Cloud Storage
+        # Read the supported_images.json file from Google Cloud Storage
         bucket = storage_client.bucket(supported_images_bucket)
-        blob = bucket.blob('supported_images.json')  # Assuming the file is named 'supported_images.json'
+        blob = bucket.blob('supported_images.json')  # Assuming the JSON file is named 'supported_images.json'
         file_content = blob.download_as_text()
 
     except Exception as e:
@@ -71,7 +76,6 @@ def handle():
     except Exception as e:
         logger.error(f"Error while processing the JSON file. Error - {str(e)}")
         return {"statusCode": 500, "error": "Error while processing JSON file."}
-
 
 def main(request):
     """HTTP Cloud Function to trigger Cloud Build based on the supported_images.json."""
