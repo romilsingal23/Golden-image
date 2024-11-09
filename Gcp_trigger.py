@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 
 # Environment variables with default values
 project_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
-supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', "dev-supported_images")  # GCS bucket name for JSON file
+supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', "dev-supported-images")  # GCS bucket name for JSON file
 
 # Initialize Google Cloud clients
 storage_client = storage.Client()
@@ -33,11 +33,11 @@ def trigger_cloud_build(client, image_name, image):
             },
             'substitutions': {
                 '_IMAGE_NAME': image['image_name'],
-                '_IMAGE_FAMILY': image['image_family'],
+                '_IMAGE_FAMILY': image['source_image_family'],
                 '_SOURCE_IMAGE': image.get('source_image'),
-                '_SSH_USERNAME': image.get('ssh_username', 'default-user'),  # Default username
-                '_DISK_SIZE': str(image.get('disk_size', 10)),  # Default disk size: 10GB
-                '_DATE_CREATED': start_time.strftime('%Y-%m-%dT%H:%M:%S')
+                '_SSH_USERNAME': image.get('ssh_username'),  # Default username
+                '_DISK_SIZE': image.get('disk_size'),  # Default disk size: 10GB
+                '_DATE_CREATED': datetime.strftime(start_time,'%Y-%m-%dT%H:%M:%S')
             }
         }
 
