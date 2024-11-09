@@ -4,20 +4,22 @@ import logging
 from datetime import datetime, timezone
 from google.cloud import build_v1
 from google.cloud import storage
+from google.cloud.devtools import cloudbuild_v1
+from google.cloud.devtools.cloudbuild_v1 import CloudBuildClient
 
 # Initialize logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Environment variables
-project_id = os.getenv('PROJECT_ID', 'your-project-id')  # Google Cloud Project ID
-supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', 'your-bucket-name')  # GCS bucket name for JSON file
+project_id = os.getenv('PROJECT_ID')  # Google Cloud Project ID
+supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET')  # GCS bucket name for JSON file
 
 # Google Cloud Storage client
 storage_client = storage.Client()
 
 # Cloud Build client to trigger builds
-cloud_build_client = build_v1.CloudBuildClient()
+cloud_build_client = CloudBuildClient()
 
 
 def trigger_cloud_build(client, image_name, image):
@@ -29,21 +31,17 @@ def trigger_cloud_build(client, image_name, image):
         build_config = {
             'source': {
                 'storage_source': {
-                    'bucket': supported_images_bucket,
-                    'object': 'path/to/cloudbuild.zip'  # Path to the .zip file in the bucket
+                    'bucket': 'gcp-build1',
+                    'object': 'cloudbuild.zip'  # Path to the .zip file in the bucket
                 }
             },
             'substitutions': {
                 '_IMAGE_NAME': image['image_name'],
                 '_IMAGE_FAMILY': image['image_family'],
-                '_PROJECT_ID': project_id,
-                '_ZONE': image.get('zone', 'us-central1-a'),
-                '_SOURCE_IMAGE': image.get('source_image', 'debian-10-buster-v20210817'),
-                '_SSH_USERNAME': image.get('ssh_user', 'cloud-user'),
-                '_MACHINE_TYPE': image.get('machine_type', 'n1-standard-1'),
-                '_DISK_SIZE': image.get('disk_size', 10),
-                '_NETWORK': image.get('network', 'default'),
-                '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%d-%H%M%S')
+                '_SOURCE_IMAGE': image.get('source_image'),
+                '_SSH_USERNAME': image.get('ssh_username'),
+                '_DISK_SIZE': image.get('disk_size'),
+                '_DATE_CREATED': datetime.strftime(start_time)
             }
         }
 
@@ -61,13 +59,13 @@ def handle():
     """Process the supported_images.json file and trigger builds."""
     try:
         # Read the supported_images.json file from GCS
-        bucket = storage_client.bucket(supported_images_bucket)
+        bucket = storage_client.bucket(dev-supported-images)
         blob = bucket.blob('supported_images.json')
         file_content = blob.download_as_text()
 
         # Parse the JSON content
         image_list_content = json.loads(file_content)
-        image_list = image_list_content.get('gcp', {})
+        image_list = image_list_content.get('gcp')
 
         if not image_list:
             logger.error("No GCP images found in the JSON file.")
