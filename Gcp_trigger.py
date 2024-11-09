@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import traceback
 from datetime import datetime, timezone
 from google.cloud import storage
 from google.cloud.devtools.cloudbuild_v1 import CloudBuildClient
@@ -48,6 +49,7 @@ def trigger_cloud_build(client, image_name, image):
 
     except Exception as e:
         logger.error(f"Failed to trigger build for {image_name}. Error: {str(e)}")
+        logger.error("".join(traceback.format_exc()))  # Log full traceback
         raise
 
 
@@ -77,6 +79,7 @@ def handle():
 
     except Exception as e:
         logger.error(f"Error while processing request: {str(e)}")
+        logger.error("".join(traceback.format_exc()))  # Log full traceback
         return {"statusCode": 500, "error": str(e)}
 
 
@@ -93,6 +96,7 @@ def main(request=None):
         )
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
+        logger.error("".join(traceback.format_exc()))  # Log full traceback
         return (
             json.dumps({"error": "Internal Server Error"}),
             500,
@@ -111,3 +115,4 @@ if __name__ == "__main__":
         logger.info(f"Response: {json.dumps(response, indent=4)}")
     except Exception as e:
         logger.error(f"An error occurred during local execution: {str(e)}")
+        logger.error("".join(traceback.format_exc()))  # Log full traceback for local errors
