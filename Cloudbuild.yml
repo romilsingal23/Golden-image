@@ -1,24 +1,19 @@
 steps:
   - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'clone-repo'
-    args: ['git', 'clone', 'https://github.com/your-repo/your-project.git']
-
-  - name: 'gcr.io/cloud-builders/gcloud'
     id: 'run-packer'
     entrypoint: 'bash'
-    args: ['-c', './scripts/run-packer.sh']
+    args: ['-c', './execute_packer.sh']
     env:
-      - 'PROJECT_ID=${PROJECT_ID}'
-      - 'IMAGE_NAME=${IMAGE_NAME}'
-      - 'IMAGE_FAMILY=${IMAGE_FAMILY}'
-      - 'SSH_USER=${SSH_USER}'
-      - 'ARCHITECTURE=${ARCHITECTURE}'
-      - 'ROOT_VOLUME=${ROOT_VOLUME}'
-      - 'DEVICE_TYPE=${DEVICE_TYPE}'
-      - 'SOURCE_IMAGE_FAMILY=${SOURCE_IMAGE_FAMILY}'
+      - 'SOURCE_IMAGE_FAMILY=${_SOURCE_IMAGE_FAMILY}'
       - 'SOURCE_IMAGE_PROJECT=${SOURCE_IMAGE_PROJECT}'
+      - 'IMAGE_NAME=${_IMAGE_NAME}'
+      - 'SSH_USERNAME=${_SSH_USERNAME}'
+      - 'ARCHITECTURE=${ARCHITECTURE}'
+      - 'DEVICE_TYPE=${DEVICE_TYPE}'
       # Terraform outputs
+      - 'PROJECT_ID=${PROJECT_ID}'
       - 'NETWORK_ID=${NETWORK_ID}'
       - 'SUBNET_ID=${SUBNET_ID}'
   
 timeout: '3600s'  # Optional, set timeout for the build
+        
