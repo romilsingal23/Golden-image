@@ -1,0 +1,4 @@
+resource.type="project"
+resource.labels.project_id="YOUR_PROJECT_ID"
+logName="projects/YOUR_PROJECT_ID/logs/cloudaudit.googleapis.com%2Factivity"
+protoPayload.methodName="google.devtools.cloudbuild.v1.CloudBuild.CreateBuildTrigger"
