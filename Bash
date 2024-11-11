@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Run Packer build using the environment variables
+packer build \
+  -var "project_id=${PROJECT_ID}" \
+  -var "image_name=${IMAGE_NAME}" \
+  -var "image_family=${IMAGE_FAMILY}" \
+  -var "ssh_user=${SSH_USER}" \
+  -var "architecture=${ARCHITECTURE}" \
+  -var "root_volume=${ROOT_VOLUME}" \
+  -var "device_type=${DEVICE_TYPE}" \
+  -var "source_image_family=${SOURCE_IMAGE_FAMILY}" \
+  -var "source_image_project=${SOURCE_IMAGE_PROJECT}" \
+  -var "network_id=${NETWORK_ID}" \
+  -var "subnet_id=${SUBNET_ID}" \
+  ./packer-template.pkr.hcl
