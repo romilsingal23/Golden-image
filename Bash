@@ -1,4 +1,11 @@
 #!/bin/bash
+# Get Terraform output value (e.g., network_id) from the Terraform state
+NETWORK_ID=$(terraform output -raw network_id)
+SUBNET_ID=$(terraform output -raw subnet_id)
+
+# Print the values to confirm
+echo "Network ID: $NETWORK_ID"
+echo "Subnet ID: $SUBNET_ID"
 
 # Run Packer build using the environment variables
 packer build \
