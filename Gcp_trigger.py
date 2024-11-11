@@ -29,15 +29,13 @@ def trigger_cloud_build(client, image_name, image):
             'source': {
                 'storage_source': {
                     'bucket': 'gcp-build1',
-                    'object': 'cloudbuild.zip'  # Path to the .zip file in the bucket
+                    'object': 'codebuild.zip'  # Path to the .zip file in the bucket
                 }
             },
             'substitutions': {
                 '_IMAGE_NAME': image['image_name'],
                 '_IMAGE_FAMILY': image['source_image_family'],
-                '_SOURCE_IMAGE': image.get('source_image'),
-                '_SSH_USERNAME': image.get('ssh_username'),  # Default username
-                '_DISK_SIZE': image.get('disk_size'),  # Default disk size: 10GB
+                '_SSH_USERNAME': image['ssh_username'],  # Default username
                 '_DATE_CREATED': datetime.strftime(start_time,'%Y-%m-%dT%H:%M:%S')
             }
         }
@@ -58,9 +56,9 @@ def handle():
     try:
         # Read the supported_images.json file from GCS
         bucket = storage_client.bucket(supported_images_bucket)
-        blob = bucket.blob('supported_images.json')
+        object = bucket.blob('supported_images.json')
         logger.info("Downloading supported_images.json...")
-        file_content = blob.download_as_text()
+        file_content = object.download_as_text()
 
         # Parse the JSON content
         image_list_content = json.loads(file_content)
@@ -106,8 +104,8 @@ def main(request=None):
 
 # Test block for local execution
 if __name__ == "__main__":
-    os.environ["PROJECT_ID"] = "your-project-id"  # Replace with your actual Project ID
-    os.environ["SUPPORTED_IMAGES_BUCKET"] = "your-bucket-name"  # Replace with your bucket name
+    os.environ["PROJECT_ID"] = "zjmqcnnb-gf42-i38m-a28a-y3gmil"  # Replace with your actual Project ID
+    os.environ["SUPPORTED_IMAGES_BUCKET"] = "dev-supported-images"  # Replace with your bucket name
 
     try:
         logger.info("Running main.py locally...")
