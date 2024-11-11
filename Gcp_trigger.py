@@ -23,7 +23,7 @@ def trigger_cloud_build(client, image_name, image):
     try:
         start_time = datetime.now(timezone.utc)
 
-        # Define the build configuration
+        # Define the build configuration with refined variable names and enhanced logging
         build_config = {
             'steps': [
                 {
@@ -35,8 +35,8 @@ def trigger_cloud_build(client, image_name, image):
                         'chmod +x execute_packer.sh && bash execute_packer.sh'
                     ],
                     'env': [
-                        f'SOURCE_IMAGE_FAMILY={image.get("image_family", "default-family")}',
-                        f'IMAGE_NAME={image.get("image_name")}',
+                        f'SOURCE_IMAGE_FAMILY={image.get("source_image_family", "default-family")}',
+                        f'IMAGE_NAME={image.get("image_name", "default-image")}',
                         f'SSH_USERNAME={image.get("ssh_user", "default_user")}',
                         f'ARCHITECTURE={image.get("architecture", "x86")}',  # Defaulting to x86 if not specified
                         f'DATE_CREATED={datetime.strftime(start_time, "%Y-%m-%dT%H:%M:%S")}',
@@ -46,14 +46,15 @@ def trigger_cloud_build(client, image_name, image):
             ],
             'substitutions': {
                 '_IMAGE_NAME': image.get('image_name', 'default-image'),
-                '_SOURCE_IMAGE_FAMILY': image.get('image_family', 'default-family'),
+                '_SOURCE_IMAGE_FAMILY': image.get('source_image_family', 'default-family'),
                 '_SSH_USERNAME': image.get('ssh_user', 'default_user'),
                 '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%dT%H:%M:%S')
             },
         }
 
-        # Log substitution values for debugging
-        logger.info(f"Substitutions: {build_config['substitutions']}")
+        # Log each substitution value and step for clarity
+        logger.info(f"Substitutions for build: {build_config['substitutions']}")
+        logger.info(f"Build config: {json.dumps(build_config, indent=2)}")
 
         # Trigger the build
         response = client.create_build(project_id=project_id, build=build_config)
