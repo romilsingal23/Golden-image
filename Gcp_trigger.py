@@ -26,23 +26,50 @@ def trigger_cloud_build(client, image_name, image):
 
         # Define the build configuration
         build_config = {
-            'source': {
-                'storage_source': {
-                    'bucket': 'gcp-build1',
-                    'object': 'codebuild.zip'  # Path to the .zip file in the bucket
+            # 'source': {
+            #     'storage_source': {
+            #         'bucket': 'gcp-build1',
+            #         'object': 'codebuild.zip'  # Path to the .zip file in the bucket
+            #     }
+            # },
+
+            'steps': [
+                {
+                    'name': 'ubuntu',
+                    'id': 'run-packer',
+                    'entrypoint': 'bash',
+                    'args': [
+                        '-c',
+                        'chmod +x execute_packer.sh && bash execute_packer.sh'
+                    ],
+                    'env': [
+                        f'SOURCE_IMAGE_FAMILY={image.get("image_family")}',
+                        f'IMAGE_NAME={image.get("image_name")}',
+                        f'SSH_USERNAME={image.get("ssh_user", "default_user")}',
+                        f'ARCHITECTURE={image.get("architecture", "x86")}',  # Defaulting to x86 if not specified
+                        f'DATE_CREATED={datetime.strftime(start_time, "%Y-%m-%dT%H:%M:%S")}',
+                        f'PROJECT_ID={project_id}'
+                    ]
                 }
-            },
+            ],
+
             'substitutions': {
-                '_IMAGE_NAME': image.get('image_name'),
-                '_IMAGE_FAMILY': image.get('image_family'),
-                '_SSH_USERNAME': image.get('ssh_user', 'default_user'),  # Default username if not in JSON
-                '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%dT%H:%M:%S')
+                'IMAGE_NAME': image.get('image_name'),
+                'SOURCE_IMAGE_FAMILY': image.get('source_image_family'),
+                'SSH_USERNAME': image.get('ssh_username', 'default_user'),  # Default username if not in JSON
+                'DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%dT%H:%M:%S'),
+                #network_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")
+
             }
         }
+        logger.info("Start Test Build")
+        logger.info(f"Start Test Build {image.get('source_image_family')}")
+        
+        
 
         # Trigger the build
-        response = client.create_build(project_id=project_id, build=build_config)
-        logger.info(f"Build triggered for {image_name} with build ID: {response.name}")
+        response = client.create_build(project_id= project_id, build= build_config)
+        logger.info(f"Build triggered for {image_name} with build ID: {response} ")
         return response
 
     except Exception as e:
@@ -100,3 +127,16 @@ def main(request=None):
             500,
             {"Content-Type": "application/json"},
         )
+
+# Test block for local execution
+if __name__ == "__main__":
+    os.environ["PROJECT_ID"] = "zjmqcnnb-gf42-i38m-a28a-y3gmil"  # Replace with your actual Project ID
+    os.environ["SUPPORTED_IMAGES_BUCKET"] = "dev-supported-images"  # Replace with your bucket name
+
+    try:
+        logger.info("Running main.py locally...")
+        response = handle()
+        logger.info(f"Response: {json.dumps(response, indent=4)}")
+    except Exception as e:
+        logger.error(f"An error occurred during local execution: {str(e)}")
+        logger.error("".join(traceback.format_exc()))  # Log full traceback for local errors
