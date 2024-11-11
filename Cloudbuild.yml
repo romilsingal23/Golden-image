@@ -5,15 +5,10 @@ steps:
     args: ['-c', './execute_packer.sh']
     env:
       - 'SOURCE_IMAGE_FAMILY=${_SOURCE_IMAGE_FAMILY}'
-      - 'SOURCE_IMAGE_PROJECT=${SOURCE_IMAGE_PROJECT}'
-      - 'IMAGE_NAME=${_IMAGE_NAME}'
       - 'SSH_USERNAME=${_SSH_USERNAME}'
-      - 'ARCHITECTURE=${ARCHITECTURE}'
-      - 'DEVICE_TYPE=${DEVICE_TYPE}'
+      - 'ARCHITECTURE=${_ARCHITECTURE}'
       # Terraform outputs
-      - 'PROJECT_ID=${PROJECT_ID}'
-      - 'NETWORK_ID=${NETWORK_ID}'
-      - 'SUBNET_ID=${SUBNET_ID}'
-  
+      - 'PROJECT_ID=${_PROJECT_ID}'
+      
 timeout: '3600s'  # Optional, set timeout for the build
         
