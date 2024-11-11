@@ -18,7 +18,6 @@ supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', "dev-supported-im
 storage_client = storage.Client()
 cloud_build_client = CloudBuildClient()
 
-
 def trigger_cloud_build(client, image_name, image):
     """Trigger a Cloud Build for a given image."""
     try:
@@ -26,13 +25,6 @@ def trigger_cloud_build(client, image_name, image):
 
         # Define the build configuration
         build_config = {
-            # 'source': {
-            #     'storage_source': {
-            #         'bucket': 'gcp-build1',
-            #         'object': 'codebuild.zip'  # Path to the .zip file in the bucket
-            #     }
-            # },
-
             'steps': [
                 {
                     'name': 'ubuntu',
@@ -43,7 +35,7 @@ def trigger_cloud_build(client, image_name, image):
                         'chmod +x execute_packer.sh && bash execute_packer.sh'
                     ],
                     'env': [
-                        f'SOURCE_IMAGE_FAMILY={image.get("image_family")}',
+                        f'SOURCE_IMAGE_FAMILY={image.get("image_family", "default-family")}',
                         f'IMAGE_NAME={image.get("image_name")}',
                         f'SSH_USERNAME={image.get("ssh_user", "default_user")}',
                         f'ARCHITECTURE={image.get("architecture", "x86")}',  # Defaulting to x86 if not specified
@@ -52,31 +44,26 @@ def trigger_cloud_build(client, image_name, image):
                     ]
                 }
             ],
-
             'substitutions': {
-                'IMAGE_NAME': image.get('image_name'),
-                'SOURCE_IMAGE_FAMILY': image.get('source_image_family'),
-                'SSH_USERNAME': image.get('ssh_username', 'default_user'),  # Default username if not in JSON
-                'DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%dT%H:%M:%S'),
-                #network_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")
-
-            }
+                '_IMAGE_NAME': image.get('image_name', 'default-image'),
+                '_SOURCE_IMAGE_FAMILY': image.get('image_family', 'default-family'),
+                '_SSH_USERNAME': image.get('ssh_user', 'default_user'),
+                '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%dT%H:%M:%S')
+            },
         }
-        logger.info("Start Test Build")
-        logger.info(f"Start Test Build {image.get('source_image_family')}")
-        
-        
+
+        # Log substitution values for debugging
+        logger.info(f"Substitutions: {build_config['substitutions']}")
 
         # Trigger the build
-        response = client.create_build(project_id= project_id, build= build_config)
-        logger.info(f"Build triggered for {image_name} with build ID: {response} ")
+        response = client.create_build(project_id=project_id, build=build_config)
+        logger.info(f"Build triggered for {image_name} with build ID: {response.name}")
         return response
 
     except Exception as e:
         logger.error(f"Failed to trigger build for {image_name}. Error: {str(e)}")
         logger.error("".join(traceback.format_exc()))  # Log full traceback
         raise
-
 
 def handle():
     """Process the supported_images.json file and trigger builds."""
@@ -106,7 +93,6 @@ def handle():
         logger.error(f"Error while processing request: {str(e)}")
         logger.error("".join(traceback.format_exc()))  # Log full traceback
         return {"statusCode": 500, "error": str(e)}
-
 
 def main(request=None):
     """HTTP Cloud Function to handle requests."""
