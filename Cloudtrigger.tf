@@ -1,37 +1,35 @@
-# Define your variables (for example, project ID and bucket name)
-variable "project_id" {
-  type    = string
-  default = "your-project-id"
-}
-
-variable "bucket_name" {
-  type    = string
-  default = "your-source-bucket"
-}
-
-# Cloud Build Trigger resource
 resource "google_cloudbuild_trigger" "image_build_trigger" {
-  project      = var.project_id
-  name         = "image-build-trigger"
-  description  = "Trigger to build images with substitution variables"
-  trigger_template {
-    branch_name = "main"
-    repo_name   = "your-repo-name"
-  }
+  project     = var.project_id
+  name        = "scheduled-image-build-trigger"
+  description = "Scheduled trigger to build images with dynamic substitution variables"
 
-  # Define your substitutions
+  manual_trigger {}
+
   substitutions = {
-    "_IMAGE_NAME"   = "default-image-name"      # Placeholder; will be replaced dynamically
-    "_IMAGE_FAMILY" = "default-image-family"    # Placeholder; will be replaced dynamically
-    "_SSH_USERNAME" = "default-user"            # Placeholder; will be replaced dynamically
-    "_DATE_CREATED" = "default-date"            # Placeholder; will be replaced dynamically
+    "_IMAGE_NAME"   = local.substitutions["image_name"]
+    "_IMAGE_FAMILY" = local.substitutions["image_family"]
+    "_SSH_USERNAME" = local.substitutions["ssh_username"]
+    "_DATE_CREATED" = local.substitutions["date_created"]
   }
 
-  # Build steps or configuration
   filename = "cloudbuild.yaml"
 }
 
-# Example to output the build trigger ID, if needed
-output "build_trigger_id" {
-  value = google_cloudbuild_trigger.image_build_trigger.id
+resource "google_cloud_scheduler_job" "scheduled_trigger_job" {
+  name        = "scheduled-trigger-job"
+  description = "Scheduled job to trigger Cloud Build on a cron schedule"
+  schedule    = "0 0 * * *" # Cron expression (e.g., every day at midnight)
+  time_zone   = "UTC"
+
+  http_target {
+    uri = "https://cloudbuild.googleapis.com/v1/projects/${var.project_id}/triggers/${google_cloudbuild_trigger.image_build_trigger.id}:run"
+    http_method = "POST"
+    headers = {
+      "Authorization" = "Bearer ${data.google_iam_access_token.cloud_build_access_token.access_token}"
+    }
+  }
+}
+
+data "google_iam_access_token" "cloud_build_access_token" {
+  scopes = ["https://www.googleapis.com/auth/cloud-platform"]
 }
