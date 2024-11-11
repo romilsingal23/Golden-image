@@ -1,39 +1,50 @@
-#!/bin/bash
-# Get Terraform output value (e.g., network_id) from the Terraform state
-NETWORK_ID=$(terraform output -raw network_id)
-SUBNET_ID=$(terraform output -raw subnet_id)
+def trigger_cloud_build(client, image_name, image):
+    """Trigger a Cloud Build for a given image."""
+    try:
+        start_time = datetime.now(timezone.utc)
 
-# Print the values to confirm
-echo "Network ID: $NETWORK_ID"
-echo "Subnet ID: $SUBNET_ID"
+        # Define the build configuration
+        build_config = {
+            'source': {
+                'storage_source': {
+                    'bucket': 'gcp-build1',
+                    'object': 'codebuild.zip'  # Path to the .zip file in the bucket
+                }
+            },
+            'steps': [
+                {
+                    'name': 'ubuntu',
+                    'id': 'run-packer',
+                    'entrypoint': 'bash',
+                    'args': [
+                        '-c',
+                        'chmod +x execute_packer.sh && bash execute_packer.sh'
+                    ],
+                    'env': [
+                        f'SOURCE_IMAGE_FAMILY={image.get("image_family")}',
+                        f'IMAGE_NAME={image.get("image_name")}',
+                        f'SSH_USERNAME={image.get("ssh_user", "default_user")}',
+                        f'ARCHITECTURE={image.get("architecture", "x86")}',  # Defaulting to x86 if not specified
+                        f'DATE_CREATED={datetime.strftime(start_time, "%Y-%m-%dT%H:%M:%S")}',
+                        f'PROJECT_ID={project_id}'
+                    ]
+                }
+            ],
+            'substitutions': {
+                '_IMAGE_NAME': image.get('image_name'),
+                '_IMAGE_FAMILY': image.get('image_family'),
+                '_SSH_USERNAME': image.get('ssh_user', 'default_user'),  # Default username if not in JSON
+                '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%dT%H:%M:%S')
+            },
+            'timeout': '3600s'  # Optional, set timeout for the build
+        }
 
-# Run Packer build using the environment variables
-packer build \
-  -var "project_id=${PROJECT_ID}" \
-  -var "image_name=${IMAGE_NAME}" \
-  -var "image_family=${IMAGE_FAMILY}" \
-  -var "ssh_user=${SSH_USER}" \
-  -var "architecture=${ARCHITECTURE}" \
-  -var "root_volume=${ROOT_VOLUME}" \
-  -var "device_type=${DEVICE_TYPE}" \
-  -var "source_image_family=${SOURCE_IMAGE_FAMILY}" \
-  -var "source_image_project=${SOURCE_IMAGE_PROJECT}" \
-  -var "network_id=${NETWORK_ID}" \
-  -var "subnet_id=${SUBNET_ID}" \
-  ./packer-template.pkr.hcl
+        # Trigger the build
+        response = client.create_build(project_id=project_id, build=build_config)
+        logger.info(f"Build triggered for {image_name} with build ID: {response.name}")
+        return response
 
-
-output "network_id" {
-  description = "The ID of the network"
-  value       = google_compute_network.vpc1.id
-}
-
-output "subnet_id" {
-  description = "The ID of the subnet"
-  value       = google_compute_subnetwork.subnetwork1.id
-}
-
-output "project_id" {
-  description = "The ID of the project"
-  value       = var.project_id
-}
+    except Exception as e:
+        logger.error(f"Failed to trigger build for {image_name}. Error: {str(e)}")
+        logger.error("".join(traceback.format_exc()))  # Log full traceback
+        raise
