@@ -34,8 +34,8 @@ def trigger_cloud_build(client, image_name, image):
             },
             'substitutions': {
                 '_IMAGE_NAME': image.get('image_name'),
-                '_IMAGE_FAMILY': image.get('source_image_family'),
-                '_SSH_USERNAME': image.get('ssh_username', 'default_user'),  # Default username if not in JSON
+                '_IMAGE_FAMILY': image.get('image_family'),
+                '_SSH_USERNAME': image.get('ssh_user', 'default_user'),  # Default username if not in JSON
                 '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%dT%H:%M:%S')
             }
         }
