@@ -21,3 +21,19 @@ packer build \
   -var "network_id=${NETWORK_ID}" \
   -var "subnet_id=${SUBNET_ID}" \
   ./packer-template.pkr.hcl
+
+
+output "network_id" {
+  description = "The ID of the network"
+  value       = google_compute_network.vpc1.id
+}
+
+output "subnet_id" {
+  description = "The ID of the subnet"
+  value       = google_compute_subnetwork.subnetwork1.id
+}
+
+output "project_id" {
+  description = "The ID of the project"
+  value       = var.project_id
+}
