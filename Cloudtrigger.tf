@@ -6,26 +6,32 @@ data "template_file" "substitutions" {
 # Parse the JSON into a local map
 locals {
   images_data = jsondecode(data.template_file.substitutions.rendered)
-  
-  # Extract GCP-specific data
-  gcp_substitutions = local.images_data["gcp"]
+
+  # Extract GCP-specific data for all OS types (RHEL_8, RHEL_9, Windows_22, etc.)
+  gcp_images = local.images_data["gcp"]
 }
 
-# Cloud Build Trigger with dynamic substitutions for GCP
+# Cloud Build Trigger for each OS type
 resource "google_cloudbuild_trigger" "image_build_trigger" {
+  for_each = local.gcp_images
+
   project     = var.project_id
-  name        = "image-build-trigger"
-  description = "Trigger to build GCP images with dynamic substitution variables"
+  name        = "image-build-trigger-${each.key}"
+  description = "Trigger to build the ${each.key} image with dynamic substitution variables"
   trigger_template {
     branch_name = "main"
     repo_name   = "your-repo-name"
   }
 
   substitutions = {
-    "_IMAGE_NAME"   = local.gcp_substitutions["image_name"]
-    "_IMAGE_FAMILY" = local.gcp_substitutions["image_family"]
-    "_SSH_USERNAME" = local.gcp_substitutions["ssh_username"]
-    "_DATE_CREATED" = local.gcp_substitutions["date_created"]
+    "_IMAGE_NAME"        = each.value["image_name"]
+    "_IMAGE_FAMILY"      = each.value["image_family"]
+    "_IMAGE_PROJECT"     = each.value["image_project"]
+    "_ARCHITECTURE"      = each.value["architecture"]
+    "_DEVICE_TYPE"       = each.value["device_type"]
+    "_ROOT_VOLUME"       = each.value["root_volume"]
+    "_SSH_USER"          = each.value["ssh_user"]
+    "_VIRTUALIZATION_TYPE" = each.value["virtualization_type"]
   }
 
   filename = "cloudbuild.yaml"
