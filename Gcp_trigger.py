@@ -33,10 +33,10 @@ def trigger_cloud_build(client, image_name, image):
                 }
             },
             'substitutions': {
-                '_IMAGE_NAME': image['image_name'],
-                '_IMAGE_FAMILY': image['source_image_family'],
-                '_SSH_USERNAME': image['ssh_username'],  # Default username
-                '_DATE_CREATED': datetime.strftime(start_time,'%Y-%m-%dT%H:%M:%S')
+                '_IMAGE_NAME': image.get('image_name'),
+                '_IMAGE_FAMILY': image.get('source_image_family'),
+                '_SSH_USERNAME': image.get('ssh_username', 'default_user'),  # Default username if not in JSON
+                '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%dT%H:%M:%S')
             }
         }
 
@@ -100,17 +100,3 @@ def main(request=None):
             500,
             {"Content-Type": "application/json"},
         )
-
-
-# Test block for local execution
-if __name__ == "__main__":
-    os.environ["PROJECT_ID"] = "zjmqcnnb-gf42-i38m-a28a-y3gmil"  # Replace with your actual Project ID
-    os.environ["SUPPORTED_IMAGES_BUCKET"] = "dev-supported-images"  # Replace with your bucket name
-
-    try:
-        logger.info("Running main.py locally...")
-        response = handle()
-        logger.info(f"Response: {json.dumps(response, indent=4)}")
-    except Exception as e:
-        logger.error(f"An error occurred during local execution: {str(e)}")
-        logger.error("".join(traceback.format_exc()))  # Log full traceback for local errors
