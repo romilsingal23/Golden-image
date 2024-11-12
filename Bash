@@ -1,50 +1,40 @@
-def trigger_cloud_build(client, image_name, image):
-    """Trigger a Cloud Build for a given image."""
-    try:
-        start_time = datetime.now(timezone.utc)
+#!/bin/bash
+set -e
 
-        # Define the build configuration
-        build_config = {
-            'source': {
-                'storage_source': {
-                    'bucket': 'gcp-build1',
-                    'object': 'codebuild.zip'  # Path to the .zip file in the bucket
-                }
-            },
-            'steps': [
-                {
-                    'name': 'ubuntu',
-                    'id': 'run-packer',
-                    'entrypoint': 'bash',
-                    'args': [
-                        '-c',
-                        'chmod +x execute_packer.sh && bash execute_packer.sh'
-                    ],
-                    'env': [
-                        f'SOURCE_IMAGE_FAMILY={image.get("image_family")}',
-                        f'IMAGE_NAME={image.get("image_name")}',
-                        f'SSH_USERNAME={image.get("ssh_user", "default_user")}',
-                        f'ARCHITECTURE={image.get("architecture", "x86")}',  # Defaulting to x86 if not specified
-                        f'DATE_CREATED={datetime.strftime(start_time, "%Y-%m-%dT%H:%M:%S")}',
-                        f'PROJECT_ID={project_id}'
-                    ]
-                }
-            ],
-            'substitutions': {
-                '_IMAGE_NAME': image.get('image_name'),
-                '_IMAGE_FAMILY': image.get('image_family'),
-                '_SSH_USERNAME': image.get('ssh_user', 'default_user'),  # Default username if not in JSON
-                '_DATE_CREATED': datetime.strftime(start_time, '%Y-%m-%dT%H:%M:%S')
-            },
-            'timeout': '3600s'  # Optional, set timeout for the build
-        }
+apt-get update -y
+apt-get install python3 wget unzip -y
+echo "Installing Packer..."
+wget https://releases.hashicorp.com/packer/1.11.2/packer_1.11.2_linux_amd64.zip
+unzip packer_1.11.2_linux_amd64.zip -d /usr/local/bin
+/usr/local/bin/packer version
 
-        # Trigger the build
-        response = client.create_build(project_id=project_id, build=build_config)
-        logger.info(f"Build triggered for {image_name} with build ID: {response.name}")
-        return response
+unzip ansible.zip -d ./ansible
 
-    except Exception as e:
-        logger.error(f"Failed to trigger build for {image_name}. Error: {str(e)}")
-        logger.error("".join(traceback.format_exc()))  # Log full traceback
-        raise
+echo $OS_TYPE
+echo $SOURCE_IMAGE_FAMILY
+echo $IMAGE_NAME
+echo $OS_ARCH
+echo $DATE_CREATED
+echo $NETWORK
+echo $SUBNET
+
+echo "Running Packer Build"
+
+if [[ "$OS_TYPE" == "Windows" ]]
+then
+   PACKER_FILE="gcp_win.pkr.hcl"
+elif [[ "$SOURCE_IMAGE_FAMILY" == "RHEL_9" ]]
+then
+   PACKER_FILE="gcp_rhel.pkr.hcl"
+else 
+   PACKER_FILE="gcp.pkr.hcl"
+fi
+#python3 snow.py
+
+/usr/local/bin/packer init $PACKER_FILE
+/usr/local/bin/packer build $PACKER_FILE
+
+sleep 30 # wait a bit as there can be some timing issues before the amis can be queried
+echo 'store_metadata.py'
+python3 store_metadata.py
+
