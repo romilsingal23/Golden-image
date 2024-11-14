@@ -1,26 +1,13 @@
-steps:
-# Step 1: Download the file from GCS
-- name: 'gcr.io/cloud-builders/gcloud'
-  entrypoint: 'bash'
-  args:
-  - '-c'
-  - |
-    gsutil cp gs://your-bucket-name/your-file.tar.gz /workspace/your-file.tar.gz
+#!/bin/bash
 
-# Step 2: Extract the file
-- name: 'gcr.io/cloud-builders/busybox'
-  args:
-  - 'tar'
-  - '-xzf'
-  - '/workspace/your-file.tar.gz'
-  - '-C'
-  - '/workspace'
+# Download the gsutil tar.gz
+curl -O https://storage.googleapis.com/downloads.cloud.google.com/public/gsutil.tar.gz
 
-# Step 3: Run the script
-- name: 'gcr.io/cloud-builders/bash'
-  entrypoint: 'bash'
-  args:
-  - '-c'
-  - |
-    cd /workspace/your-extracted-folder
-    ./your-script.sh
+# Extract the tar.gz file
+tar -xvf gsutil.tar.gz
+
+# Move gsutil to a directory in your PATH (optional)
+sudo mv gsutil /usr/local/bin/
+
+# Verify installation
+gsutil version
