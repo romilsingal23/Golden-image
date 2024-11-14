@@ -1,14 +1,26 @@
 steps:
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'run-packer'
-    entrypoint: 'bash'
-    args: ['-c', './execute_packer.sh']
-    env:
-      - 'SOURCE_IMAGE_FAMILY=${_SOURCE_IMAGE_FAMILY}'
-      - 'SSH_USERNAME=${_SSH_USERNAME}'
-      - 'ARCHITECTURE=${_ARCHITECTURE}'
-      # Terraform outputs
-      - 'PROJECT_ID=${_PROJECT_ID}'
-      
-timeout: '3600s'  # Optional, set timeout for the build
-        
+# Step 1: Download the file from GCS
+- name: 'gcr.io/cloud-builders/gcloud'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    gsutil cp gs://your-bucket-name/your-file.tar.gz /workspace/your-file.tar.gz
+
+# Step 2: Extract the file
+- name: 'gcr.io/cloud-builders/busybox'
+  args:
+  - 'tar'
+  - '-xzf'
+  - '/workspace/your-file.tar.gz'
+  - '-C'
+  - '/workspace'
+
+# Step 3: Run the script
+- name: 'gcr.io/cloud-builders/bash'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    cd /workspace/your-extracted-folder
+    ./your-script.sh
