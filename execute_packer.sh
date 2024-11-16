@@ -1,93 +1,59 @@
 #!/bin/bash
 set -e
 
-# Deploys an image on GCP and verifies that the user_data provided executes
-# $1 - the os/stack to deploy and test
-test_user_data() {
-   local os_arg=$1
-   export TF_VAR_os_arch=$os_arch
-   export TF_VAR_namespace=$namespace
-   export TF_VAR_subnet=$subnet
-   export TF_VAR_network=$network
-   local image_family=$2
-   cd $os_arg
-   echo $image_family
-   terraform init -backend-config="bucket=$bucket_name"
-   
-   if ! terraform apply -auto-approve -var image_family=$image_family; then
-      terraform destroy -auto-approve -var image_family=$image_family
-      echo 'Terraform Apply Failed!'
-      exit 1
-   fi
+# Update package lists and install Python3, wget, unzip
+apt-get update -y
 
-   instance_id=$(terraform output -raw instance_id)
-   gcloud compute instances wait $instance_id --zone=$zone --timeout=300
-   
-   if ! python3 ../test_user_data.py -i $instance_id -o $os_arg; then
-      terraform destroy -auto-approve -var image_family=$image_family
-      echo 'User data test failed!'
-      exit 1
-   fi
+apt-get install python3 wget unzip -y
 
-   terraform destroy -auto-approve -var image_family=$image_family
-   cd -
-}
+# Install Ansible
+echo "Installing Ansible..."
+apt-get install -y ansible
 
-# Unzipping ansible files
+# Verify Ansible installation
+ansible --version
+
+# Download and install Packer
+echo "Installing Packer..."
+wget https://releases.hashicorp.com/packer/1.11.2/packer_1.11.2_linux_amd64.zip
+unzip packer_1.11.2_linux_amd64.zip -d /usr/local/bin
+/usr/local/bin/packer version  # Check the Packer version
+
+# Unzip the Ansible playbook files
 unzip ansible.zip -d ./ansible
 
-# Determine the appropriate packer file based on OS and image family
-if [[ $os_type == "Windows" ]]; then
+# Print environment variables for debugging
+echo "OS_TYPE: $OS_TYPE"
+echo "IMAGE_FAMILY: $IMAGE_FAMILY"
+echo "IMAGE_TYPE: $IMAGE_TYPE"
+echo "IMAGE_PROJECT: $IMAGE_PROJECT"
+echo "OS_ARCH: $OS_ARCH"
+echo "DATE_CREATED: $DATE_CREATED"
+echo "NETWORK: $NETWORK"
+echo "SUBNET: $SUBNET"
+
+CURRENT_LATEST_IMAGE=$(gcloud compute images describe-from-family rhel-family --format="value(name)")
+gcloud compute images update $CURRENT_LATEST_IMAGE --remove-labels=latest
+
+# Run Packer build
+echo "Running Packer Build"
+
+# Determine which Packer file to use based on OS type and source image family
+if [[ "$OS_TYPE" == "Windows" ]]; then
    PACKER_FILE="gcp_win.pkr.hcl"
-elif [[ $image_family == "RHEL_9" || $image_family == "ARM_RHEL_9" ]]; then
-   PACKER_FILE="gcp_rhel.pkr.hcl"
 else 
    PACKER_FILE="gcp.pkr.hcl"
 fi
 
-# Run custom Python script
-python3 snow.py
+gsutil cp gs://gcp-build-bucket/UHG_Cloud* /tmp
 
-# Initialize and build Packer image
-./packer init $PACKER_FILE
-./packer build -var "kms_alias=$kms_alias_map" $PACKER_FILE
+# Initialize and build the chosen Packer file
+/usr/local/bin/packer init "$PACKER_FILE"
+/usr/local/bin/packer build "$PACKER_FILE"
 
-# Wait for images to be available after build
-sleep 30
-echo 'Running metadata storage script'
-python3 store_metadata.py
+# Sleep for 30 seconds to ensure resources are ready
+sleep 30  
 
-# Apply specific configurations for EKS, EMR, or ECS-related images
-if [[ $image_family == *"EKS"* || $image_family == *"EMR"* || $image_family == *"ECS"* ]]; then
-   cd eks_emr_ecs
-   export TF_VAR_image_family=$image_family
-   export TF_VAR_statictime="$(date +%H-%M-%S)"
-   export TF_VAR_os_arch=$os_arch
-   export TF_VAR_namespace=$namespace
-   export TF_VAR_network=$network
-   export TF_VAR_subnet_1=$subnet_1
-   export TF_VAR_subnet_2=$subnet_2
-   export TF_VAR_security_group=$security_group
-   export TF_VAR_kms_key=$kms_key
-
-   terraform init -backend-config="bucket=$bucket_name"
-   
-   if ! terraform apply -auto-approve; then
-      terraform destroy -auto-approve
-      echo 'Terraform Apply Failed!'
-      exit 1
-   fi
-
-   terraform destroy -auto-approve
-   cd -
-fi
-
-# Run test_user_data function for non-EKS/EMR/ECS Linux images
-if [[ $os_type == "Linux" && $image_family != *"EKS"* && $image_family != *"ECS"* && $image_family != *"EMR"* ]]; then
-   test_user_data linux $image_family
-fi
-
-# Run test_user_data function for Windows images
-if [[ $os_type == "Windows" ]]; then
-   test_user_data windows $image_family
-fi
+# Run metadata storage script
+# echo "Running store_metadata.py"
+# python3 store_metadata.py
