@@ -1,13 +1,14 @@
-# Update package lists and install required packages
-sudo apt-get update -y
-sudo apt-get install apt-transport-https ca-certificates gnupg -y
+# Get the image name with the label 'latest'
+IMAGE_NAME=$(gcloud compute images list \
+    --filter="labels.latest=true" \
+    --format="value(NAME)")
 
-# Add the Google Cloud public key directly to keyrings
-curl -sSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee /usr/share/keyrings/cloud.google.gpg > /dev/null
-
-# Add Cloud SDK to sources list with signed-by option
-echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
-
-# Update package lists and install the Google Cloud SDK
-sudo apt-get update -y
-sudo apt-get install google-cloud-sdk -y
+# Grant access to the service account
+if [[ -n "$IMAGE_NAME" ]]; then
+    gcloud compute images add-iam-policy-binding "$IMAGE_NAME" \
+        --member="serviceAccount:SERVICE_ACCOUNT_EMAIL" \
+        --role="roles/compute.imageUser"
+    echo "Access granted to the service account for image: $IMAGE_NAME"
+else
+    echo "No image found with the label 'latest'."
+fi
