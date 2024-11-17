@@ -1,9 +1,12 @@
 #!/bin/bash
 set -e
 
-# Update package lists and install Python3, wget, unzip
-apt-get update -y
+# Define image families
+IMAGE_FAMILIES=("rhel-family" "ubuntu-family" "windows-family")
 
+# Update package lists and install Python3, wget, unzip
+echo "Updating package lists and installing required packages..."
+apt-get update -y
 apt-get install python3 wget unzip -y
 
 # Install Ansible
@@ -13,10 +16,11 @@ apt-get install -y ansible
 # Verify Ansible installation
 ansible --version
 
-# Download and install Packer
+# Install Packer
 echo "Installing Packer..."
-wget https://releases.hashicorp.com/packer/1.11.2/packer_1.11.2_linux_amd64.zip
-unzip packer_1.11.2_linux_amd64.zip -d /usr/local/bin
+PACKER_VERSION="1.11.2"
+wget "https://releases.hashicorp.com/packer/$PACKER_VERSION/packer_${PACKER_VERSION}_linux_amd64.zip"
+unzip packer_${PACKER_VERSION}_linux_amd64.zip -d /usr/local/bin
 /usr/local/bin/packer version  # Check the Packer version
 
 # Unzip the Ansible playbook files
@@ -32,11 +36,22 @@ echo "DATE_CREATED: $DATE_CREATED"
 echo "NETWORK: $NETWORK"
 echo "SUBNET: $SUBNET"
 
-CURRENT_LATEST_IMAGE=$(gcloud compute images describe-from-family rhel-family --format="value(name)")
-gcloud compute images update $CURRENT_LATEST_IMAGE --remove-labels=latest
+# Loop through each image family and remove the "latest" label from all images
+for FAMILY in "${IMAGE_FAMILIES[@]}"; do
+    # List all images in the current family
+    IMAGE_NAMES=$(gcloud compute images list \
+        --filter="family=$FAMILY" \
+        --format="value(name)")
+
+    # Loop through each image in the family and remove the "latest" label
+    for IMAGE in $IMAGE_NAMES; do
+        echo "Removing 'latest' label from image: $IMAGE"
+        gcloud compute images update "$IMAGE" --remove-labels=latest --quiet
+    done
+done
 
 # Run Packer build
-echo "Running Packer Build"
+echo "Running Packer Build..."
 
 # Determine which Packer file to use based on OS type and source image family
 if [[ "$OS_TYPE" == "Windows" ]]; then
@@ -55,5 +70,5 @@ gsutil cp gs://gcp-build-bucket/UHG_Cloud* /tmp
 sleep 30  
 
 # Run metadata storage script
-# echo "Running store_metadata.py"
-# python3 store_metadata.py
+echo "Running store_metadata.py"
+python3 store_metadata.py
