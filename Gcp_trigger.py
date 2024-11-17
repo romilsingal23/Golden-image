@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from google.cloud import storage
 from google.cloud.devtools.cloudbuild_v1 import CloudBuildClient
 
@@ -12,10 +12,9 @@ logging.basicConfig(level=logging.INFO)
 
 # Environment variables with default values
 project_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
-network_id = os.getenv('NETWORK', "vpc1")  # Google Cloud Network ID
-subnet_id = os.getenv('SUBNET', "subnet1")  # Google Cloud Subnet ID
-
-supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', "dev-supported-images")  # GCS bucket name for JSON file
+network_id = os.getenv('NETWORK', "gcp-build-network")  # Google Cloud Network ID
+subnet_id = os.getenv('SUBNET', "gcp-build-subnet")  # Google Cloud Subnet ID
+supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', "poc-supported-images")  # GCS bucket name for JSON file
 
 # Initialize Google Cloud clients
 storage_client = storage.Client()
@@ -34,14 +33,14 @@ def trigger_cloud_build(client, image_name, image):
         build_config = {
             'source': {
                 'storage_source': {
-                    'bucket': 'gcp-build1',
+                    'bucket': 'gcp-build-bucket',
                     'object': 'codebuild.zip'  # Path to the .zip file in the bucket
                 }
             },
 
             'steps': [
-                {
-                    'name': 'ubuntu',
+                {        
+                'name': 'gcr.io/google.com/cloudsdktool/cloud-sdk',
                     'id': 'run-packer',
                     'entrypoint': 'bash',
                     'args': [
@@ -50,22 +49,23 @@ def trigger_cloud_build(client, image_name, image):
                     ],
                     'env': [
                         f'OS_TYPE={image.get("os_type")}',
+                        f'IMAGE_FAMILY={image_name}',
                         f'SOURCE_IMAGE_FAMILY={image.get("source_image_family")}',
                         f'IMAGE_PROJECT={image.get("image_project")}',
-                        f'IMAGE_NAME={image.get("image_name")}',
                         f'SSH_USERNAME={image.get("ssh_username", "default_user")}',
                         f'OS_ARCH={image.get("architecture", "x86")}',
-                        f'DATE_CREATED={datetime.strftime(start_time, "%Y-%m-%dT%H:%M:%S")}',
+                        f'DATE_CREATED={datetime.strftime(start_time, "%Y-%m-%d-%H%M%S")}',
                         f'PROJECT_ID={project_id}',
                         f'NETWORK={network_id}',
                         f'SUBNET={subnet_id}'
                     ]
                 }
             ],
+            'timeout': timedelta(seconds=7200),
         }
 
         logger.info("Start Test Build")
-        logger.info(f"Start Test Build {image.get('source_image_family')}")
+        logger.info(f"Start Test Build {image.get('image_family')}")
         
         
 
@@ -102,9 +102,7 @@ def handle():
         # Trigger Cloud Build for each image
         for name, image in image_list.items():
             logger.info(f"Triggering build for image: {name}")
-            logger.info(f"This is image detail: {image}")
-            logger.info(f"This is image detail: {type(image)}")
-
+            
             trigger_cloud_build(cloud_build_client, name, image)
 
         return {"statusCode": 200, "message": "Builds triggered successfully"}
@@ -138,7 +136,7 @@ def main(request=None):
 # Test block for local execution
 if __name__ == "__main__":
     os.environ["PROJECT_ID"] = "zjmqcnnb-gf42-i38m-a28a-y3gmil"  # Replace with your actual Project ID
-    os.environ["SUPPORTED_IMAGES_BUCKET"] = "dev-supported-images"  # Replace with your bucket name
+    os.environ["SUPPORTED_IMAGES_BUCKET"] = "poc-supported-images"  # Replace with your bucket name
 
     try:
         logger.info("Running main.py locally...")
