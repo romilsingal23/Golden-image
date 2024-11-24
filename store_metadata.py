@@ -15,8 +15,11 @@ image_family = os.getenv('GIM_FAMILY', "gim-rhel-9")  # Google Cloud image famil
 image_table =  os.getenv('dynamodb_table', "smadu4-golden-images-metadata")
 path_to_console = os.getenv('path_to_console', 'https://us-east1.cloud.twistlock.com/us-1-111573393')
 prisma_base_url = os.getenv('prisma_base_url', 'us-east1.cloud.twistlock.com')
-network = os.getenv('NETWORK', 'smadu4-gcp-build-network')
-subnetwork = os.getenv('SUBNET', 'smadu4-gcp-build-subnet')
+network = os.getenv('NETWORK')
+subnetwork = os.getenv('SUBNET')
+#network = 'rsingal-gcp-build-network'
+#subnetwork = 'rsingal-gcp-build-subnet'
+
 prisma_username = os.getenv('prisma_username','prisma-username')
 prisma_password  = os.getenv('prisma_password','prisma-password')
 
@@ -73,7 +76,7 @@ def generate_user_data_script(image, prisma_base_url, path_to_console, token):
         script = """<powershell>
         $bearer = gcloud secrets versions access latest --secret=prisma-token --project="""+f"""{project_id}"""+"""
         $parameters = @{
-            Uri = '"""+ f"""{path_to_console}"""+"""/api/v1/scripts/defender.ps1';
+            Uri = '"""+f"""{path_to_console}"""+"""/api/v1/scripts/defender.ps1';
             Method = "Post";
             Headers = @{"authorization" = "Bearer $bearer"};
             OutFile = 'defender.ps1';;
@@ -101,16 +104,23 @@ def generate_user_data_script(image, prisma_base_url, path_to_console, token):
 
 def buildGCPImages(image,prisma_username,prisma_password):
     print("image.os_version", image['os_version'])
-    instance_name = image['image_name']
+    instance_name = image['image_name']['S'] #.replace("_", "").replace("-", "").replace(".", "")
     instance_type = get_instance_type(image['os_version'])
     try:
+        print("image", image)
+        
         print("instance_name", instance_name)
         print("instance_type", instance_type)
         prisma_username = get_secret_gcp(prisma_username)
         prisma_password  = get_secret_gcp(prisma_password)
+        print("prisma_username", prisma_username)
+        print("prisma_password", prisma_password)
+        print("prisma_base_url", prisma_base_url)
+        print("path_to_console", path_to_console)
+        
         url = f"{path_to_console}/api/v33.01/authenticate"
         token, error = get_token(prisma_username,prisma_password,url)
-        print("token created successfully")
+        print("token created successfully", token)
         if error != "":
             return { 'statusCode': 500,
                 'headers': { 'Content-Type': 'text/plain' },
@@ -119,7 +129,7 @@ def buildGCPImages(image,prisma_username,prisma_password):
 
         user_data_script = generate_user_data_script(image, prisma_base_url, path_to_console, token)
         zone = 'us-east1-b'
-        print("user_data_script created successfully")
+        print("user_data_script created successfully",user_data_script)
         tags = ['ssh-allowed']
         metadata = [
             {'key': 'startup-script', 'value': user_data_script}
@@ -152,15 +162,16 @@ def buildGCPImages(image,prisma_username,prisma_password):
         disk.initialize_params = initialize_params
         disk.auto_delete = True
         disk.boot = True
-        print("token2")
+        print("token2", project_id)
         
         network_interface = compute_v1.NetworkInterface()
         network_interface.network = f"global/networks/{network}"
         network_interface.subnetwork = f"projects/{project_id}/regions/us-east1/subnetworks/{subnetwork}"
-        print("token3")
+        print("token3",network)
         
         instance = compute_v1.Instance()
-        instance.name = "prisma-rhel-vm"
+        #instance.name = "prisma-rhel-instance"
+        instance.name = instance_name
         instance.disks = [disk]
         instance.machine_type = f"zones/{zone}/machineTypes/{instance_type}"
         instance.network_interfaces = [network_interface]
@@ -168,7 +179,7 @@ def buildGCPImages(image,prisma_username,prisma_password):
         instance.labels = labels
         serviceAccounts= [
             {
-            "email": "smadu4-cloud-build-sa@zjmqcnnb-gf42-i38m-a28a-y3gmil.iam.gserviceaccount.com",
+            "email": "rsingal-cloud-build-sa@zjmqcnnb-gf42-i38m-a28a-y3gmil.iam.gserviceaccount.com",
             "scopes": [
                 "https://www.googleapis.com/auth/cloud-platform"
             ]
@@ -177,7 +188,7 @@ def buildGCPImages(image,prisma_username,prisma_password):
         instance.service_accounts = serviceAccounts
         #instance.metadata = compute_v1.Metadata(items=metadata + [{'key': 'startup-script', 'value': user_data_script}])
         instance.metadata = compute_v1.Metadata(items=metadata)
-        print("token4")
+        print("token4",subnetwork)
         
         # Create the instance
         operation = instance_client.insert(project=project_id, zone=zone, instance_resource=instance)
@@ -185,6 +196,7 @@ def buildGCPImages(image,prisma_username,prisma_password):
         print("operation.result",operation.result())
         print(f"Instance {instance_name} created successfully.")
     except Exception as e:
+        print(f"Instance {instance_name} creation failed. {str(e)}")
         logger.error({'error': str(e), 'traceback': traceback.format_exc()})
         return False
     return True
