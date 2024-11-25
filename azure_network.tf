@@ -1,56 +1,23 @@
-
-data "azurerm_resource_group" "build_network" {
-  count    = local.is_local ? 1 : 0
-  name     = "cdtk_golden_image_azu_build" 
+# Cloud Router
+resource "google_compute_router" "gcp_build_router" {
+  name    = "${local.namespace}-gcp-build-router"
+  network = google_compute_network.gcp_build_network.name
+  region  = var.region
+  project = var.project_id
 }
 
-data "azurerm_virtual_network" "build_network" {
-  count               = local.is_local ? 1 : 0
-  name                = "cdtk_golden_image_azu_build"
-  resource_group_name = "cdtk_golden_image_azu_build"
-}
+# Cloud NAT
+resource "google_compute_router_nat" "gcp_build_nat" {
+  name                       = "${local.namespace}-gcp-build-nat"
+  router                     = google_compute_router.gcp_build_router.name
+  region                     = var.region
+  project                    = var.project_id
+  nat_ip_allocate_option     = "AUTO_ONLY" # Automatically assign external IPs
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 
-resource "azurerm_virtual_network" "build_network" {
-  count               = local.is_local ? 0 : 1
-  name                = local.build_name
-  location            = var.azu_location
-  resource_group_name = local.resource_group_name
-  address_space       = local.vnet_range
-  tags                = var.tags
-}
-
-resource "azurerm_resource_group" "build_network" {
-  count    = local.is_local ? 0 : 1
-  name     = local.build_name
-  location = var.azu_location
-  tags     = var.tags
-}
-
-
-locals {
-  resource_group_location   = local.is_local ? data.azurerm_resource_group.build_network[0].location : azurerm_resource_group.build_network[0].location
-  resource_group_name       = local.is_local ? data.azurerm_resource_group.build_network[0].name : azurerm_resource_group.build_network[0].name
-  virtual_network_name      = local.is_local ? data.azurerm_virtual_network.build_network[0].name : azurerm_virtual_network.build_network[0].name
-  resource_group_id         = local.is_local ? data.azurerm_resource_group.build_network[0].id : azurerm_resource_group.build_network[0].id
-}
-resource "azurerm_subnet" "build_network" {
-  for_each = {
-    "${local.build_name}" : local.subnet_range
+  # Optional: Customize NAT configurations
+  log_config {
+    enable = true
+    filter = "ALL"
   }
-  name                 = each.key
-  address_prefixes     = each.value
-  resource_group_name  = local.resource_group_name
-  virtual_network_name = local.virtual_network_name
-}
-
-resource "azurerm_network_security_group" "build_network" {
-  name                = local.build_name
-  location            = var.azu_location
-  resource_group_name = local.resource_group_name
-  tags                = var.tags
-}
-
-resource "azurerm_subnet_network_security_group_association" "build_network" {
-  subnet_id                 = azurerm_subnet.build_network["${local.build_name}"].id
-  network_security_group_id = azurerm_network_security_group.build_network.id
 }
