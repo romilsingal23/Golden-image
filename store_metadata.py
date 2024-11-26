@@ -17,8 +17,8 @@ path_to_console = os.getenv('path_to_console', 'https://us-east1.cloud.twistlock
 prisma_base_url = os.getenv('prisma_base_url', 'us-east1.cloud.twistlock.com')
 network = os.getenv('NETWORK')
 subnetwork = os.getenv('SUBNET')
-#network = 'rsingal-gcp-build-network'
-#subnetwork = 'rsingal-gcp-build-subnet'
+network = 'rsingal-gcp-build-network'
+subnetwork = 'rsingal-gcp-build-subnet'
 
 prisma_username = os.getenv('prisma_username','prisma-username')
 prisma_password  = os.getenv('prisma_password','prisma-password')
@@ -132,28 +132,24 @@ def buildGCPImages(image,prisma_username,prisma_password):
         print("user_data_script created successfully",user_data_script)
         tags = ['ssh-allowed']
         metadata = [
-            {'key': 'startup-script', 'value': user_data_script}
+            {'key': 'startup-script', 'value': user_data_script},
+            {'key': 'ASKID', 'value': 'AIDE_0077829'},
+        #     {'key': 'Name', 'value': f'GoldenImageScan-{image['os_version']}'},
+        #     {'key': 'SourceImage', 'value': image['image_name']},
+        #     {'key': 'os_version', 'value': image['os_version']},
+        #     {'key': 'date_created', 'value': str(image['date_created'])},
+            {'key': 'Contact', 'value': 'HCC_CDTK@ds.uhc.com'},
+            {'key': 'AppName', 'value': 'CDTK Golden Images'},
+            {'key': 'CostCenter', 'value': '44770-01508-USAMN022-160465'},
+            {'key': 'TemporaryScanImage', 'value': 'True'},
+            {'key': 'windows-startup-script-cmd', 'value': 'googet -noconfirm=true update && googet -noconfirm=true install google-compute-engine-ssh'},
+            {'key': 'enable-windows-ssh', 'value': 'TRUE'}
         ]
-        labels = {  #Name  = f'GoldenImageScan-{image["os_version"]}',
-             #"SourceImage" : image["image_name"],
+
+        labels = {  
              #"os_version" : image["os_version"],
-             #"date_created" : str(image["date_created"]),
-             #"contact":  "HCC_CDTK@ds.uhc.com",
-             #"appname": "CDTK Golden Images",
-             #"costcenter": "44770-01508-USAMN022-160465",
-             #"askid" : "AIDE_0077829",
-             "temporaryscanimage" : "true"
+             #"date_created" : str(image["date_created"])
             }
-            # # {'key': 'Name', 'value': f'GoldenImageScan-{image['os_version']}'},
-            # {'key': 'SourceImage', 'value': image['image_name']},
-            # {'key': 'os_version', 'value': image['os_version']},
-            # #{'key': 'date_created', 'value': str(image['date_created'])},
-            # {'key': 'Contact', 'value': 'HCC_CDTK@ds.uhc.com'},
-            # {'key': 'AppName', 'value': 'CDTK Golden Images'},
-            # {'key': 'CostCenter', 'value': '44770-01508-USAMN022-160465'},
-            # {'key': 'ASKID', 'value': 'AIDE_0077829'},
-            # {'key': 'TemporaryScanImage', 'value': 'True'}
-            # ]
         
         instance_client = compute_v1.InstancesClient()
         disk = compute_v1.AttachedDisk()
