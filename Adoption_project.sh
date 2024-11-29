@@ -1,4 +1,4 @@
-l# Define your project IDs
+# Define your project IDs
 PROJECTS=("project-id-1" "project-id-2")
 
 # Loop through the projects
@@ -22,16 +22,16 @@ for project in "${PROJECTS[@]}"; do
     image_url=$(gcloud compute disks describe "$disk_name" --zone="$disk_zone" --project="$project" --format="value(sourceImage)")
 
     if [ -n "$image_url" ]; then
-      echo "Disk: $disk_name | Image: $image_url"
-
       # Extract the image name and project from the image URL
       image_name=$(echo "$image_url" | awk -F '/' '{print $NF}')
       image_project=$(echo "$image_url" | awk -F '/' '{print $(NF-3)}')
 
       # Fetch and display the labels for the image
-      gcloud compute images describe "$image_name" --project="$image_project" --format="json(labels)" | jq .
+      labels=$(gcloud compute images describe "$image_name" --project="$image_project" --format="json(labels)" | jq '.labels')
+      
+      echo "VM: $instance_name | Image Labels: $labels"
     else
-      echo "No source image found for disk: $disk_name"
+      echo "No source image found for instance: $instance_name"
     fi
   done <<< "$instances"
 done
