@@ -1,12 +1,13 @@
 import subprocess
 import json
+import pandas as pd
 from google.cloud import storage
 
-def export_vm_image_labels():
+def export_vm_image_labels_to_excel():
     # Define your project IDs and GCS bucket
     projects = ["project-id-1", "project-id-2"]
     bucket_name = "your-bucket-name"
-    output_file = "/tmp/vm_image_labels.json"
+    output_file = "/tmp/vm_image_labels.xlsx"
 
     # Initialize the result list
     results = []
@@ -63,41 +64,49 @@ def export_vm_image_labels():
                     image_name = source_image.split("/")[-1]
                     image_project = source_image.split("/")[-3]
 
-                    # Fetch the image labels
+                    # Fetch the image details
                     try:
-                        labels_json = subprocess.check_output(
+                        image_details_json = subprocess.check_output(
                             [
                                 "gcloud", "compute", "images", "describe", image_name,
                                 "--project", image_project,
-                                "--format", "json(labels)"
+                                "--format", "json"
                             ],
                             text=True
                         )
-                        labels = json.loads(labels_json).get("labels", {})
+                        image_details = json.loads(image_details_json)
+                        labels = image_details.get("labels", {})
+                        deprecation_status = image_details.get("deprecated", {}).get("state", "N/A")
                     except subprocess.CalledProcessError as e:
-                        print(f"Error fetching labels for image {image_name}: {e}")
+                        print(f"Error fetching details for image {image_name}: {e}")
                         labels = {}
+                        deprecation_status = "N/A"
 
                     # Append the result
                     results.append({
-                        "project": project,
-                        "vm_name": instance_name,
-                        "image_labels": labels
+                        "Project": project,
+                        "VM Name": instance_name,
+                        "Source Image Name": image_name,
+                        "Deprecation Status": deprecation_status,
+                        "Image Labels": json.dumps(labels)  # Convert labels dict to string
                     })
 
-    # Save the results to a local JSON file
-    with open(output_file, "w") as f:
-        json.dump(results, f, indent=2)
+    # Convert results to a DataFrame
+    df = pd.DataFrame(results)
 
-    # Upload the JSON file to GCS
+    # Save the DataFrame to an Excel file
+    df.to_excel(output_file, index=False)
+    print(f"Data exported to {output_file}")
+
+    # Upload the Excel file to GCS
     try:
         client = storage.Client()
         bucket = client.bucket(bucket_name)
-        blob = bucket.blob("vm_image_labels.json")
+        blob = bucket.blob("vm_image_labels.xlsx")
         blob.upload_from_filename(output_file)
-        print(f"Export successful: File uploaded to gs://{bucket_name}/vm_image_labels.json")
+        print(f"Export successful: File uploaded to gs://{bucket_name}/vm_image_labels.xlsx")
     except Exception as e:
         print(f"Error uploading to GCS: {e}")
 
 if __name__ == "__main__":
-    export_vm_image_labels()
+    export_vm_image_labels_to_excel()
