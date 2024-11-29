@@ -18,9 +18,10 @@ for project in "${PROJECTS[@]}"; do
 
     if [ -n "$image_url" ]; then
       echo "Disk: $disk_name | Image: $image_url"
+      
       # Fetch and display labels for the image
       image_name=$(echo "$image_url" | awk -F '/' '{print $NF}')
-      image_project=$(echo "$image_url" | awk -F '/' '{print $(NF-5)}')
+      image_project=$(echo "$image_url" | awk -F '/' '{print $(NF-3)}') # Fix the project extraction here
       
       gcloud compute images describe "$image_name" --project="$image_project" --format="json(labels)"
     else
