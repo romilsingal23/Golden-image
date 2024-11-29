@@ -1,112 +1,110 @@
-import subprocess
 import json
 import pandas as pd
+from google.cloud import compute_v1
 from google.cloud import storage
 
-def export_vm_image_labels_to_excel():
-    # Define your project IDs and GCS bucket
-    projects = ["project-id-1", "project-id-2"]
-    bucket_name = "your-bucket-name"
-    output_file = "/tmp/vm_image_labels.xlsx"
-
-    # Initialize the result list
+def fetch_instance_data(project_id):
+    # Initialize the Compute Engine client
+    instance_client = compute_v1.InstancesClient()
+    image_client = compute_v1.ImagesClient()
+    
     results = []
 
-    for project in projects:
-        print(f"Processing Project: {project}")
+    # List all zones in the project
+    request = compute_v1.AggregatedListInstancesRequest(project=project_id)
+    zones = instance_client.aggregated_list(request=request)
 
-        # List instances in the project
-        try:
-            instances_json = subprocess.check_output(
-                [
-                    "gcloud", "compute", "instances", "list",
-                    "--project", project,
-                    "--format", "json"
-                ],
-                text=True
-            )
-            instances = json.loads(instances_json)
-        except subprocess.CalledProcessError as e:
-            print(f"Error fetching instances for project {project}: {e}")
-            continue
+    # Iterate through all zones and instances
+    for zone, instances_scoped_list in zones:
+        if instances_scoped_list.instances:
+            for instance in instances_scoped_list.instances:
+                # Get VM name
+                instance_name = instance.name
+                
+                # Iterate through attached disks
+                for disk in instance.disks:
+                    disk_source = disk.source
+                    
+                    if not disk_source:
+                        continue
+                    
+                    # Extract disk name and zone
+                    disk_name = disk_source.split("/")[-1]
+                    disk_zone = disk_source.split("/zones/")[1].split("/")[0]
 
-        # Process each instance
-        for instance in instances:
-            instance_name = instance["name"]
-            disks = instance.get("disks", [])
-
-            for disk in disks:
-                disk_source = disk.get("source", "")
-                if not disk_source:
-                    continue
-
-                # Extract disk name and zone
-                disk_name = disk_source.split("/")[-1]
-                disk_zone = disk_source.split("/zones/")[1].split("/")[0]
-
-                # Get the source image for the disk
-                try:
-                    source_image = subprocess.check_output(
-                        [
-                            "gcloud", "compute", "disks", "describe", disk_name,
-                            "--zone", disk_zone,
-                            "--project", project,
-                            "--format", "value(sourceImage)"
-                        ],
-                        text=True
-                    ).strip()
-                except subprocess.CalledProcessError as e:
-                    print(f"Error fetching source image for disk {disk_name}: {e}")
-                    continue
-
-                if source_image:
-                    # Extract the image name and project
-                    image_name = source_image.split("/")[-1]
-                    image_project = source_image.split("/")[-3]
-
-                    # Fetch the image details
+                    # Get the source image for the disk
                     try:
-                        image_details_json = subprocess.check_output(
-                            [
-                                "gcloud", "compute", "images", "describe", image_name,
-                                "--project", image_project,
-                                "--format", "json"
-                            ],
-                            text=True
-                        )
-                        image_details = json.loads(image_details_json)
-                        labels = image_details.get("labels", {})
-                        deprecation_status = image_details.get("deprecated", {}).get("state", "N/A")
-                    except subprocess.CalledProcessError as e:
-                        print(f"Error fetching details for image {image_name}: {e}")
-                        labels = {}
-                        deprecation_status = "N/A"
+                        disk_info = instance_client.get(request={"project": project_id, "zone": disk_zone, "disk": disk_name})
+                        source_image_url = disk_info.source_image
+                    except Exception as e:
+                        print(f"Error fetching disk info for {disk_name}: {e}")
+                        source_image_url = None
 
-                    # Append the result
-                    results.append({
-                        "Project": project,
-                        "VM Name": instance_name,
-                        "Source Image Name": image_name,
-                        "Deprecation Status": deprecation_status,
-                        "Image Labels": json.dumps(labels)  # Convert labels dict to string
-                    })
+                    if source_image_url:
+                        # Extract the image name and project from the source image URL
+                        image_name = source_image_url.split("/")[-1]
+                        image_project = source_image_url.split("/")[-3]
 
-    # Convert results to a DataFrame
-    df = pd.DataFrame(results)
+                        # Get the image information (labels and deprecation status)
+                        try:
+                            image_info = image_client.get(project=image_project, image=image_name)
+                            labels = image_info.labels if image_info.labels else {}
+                            deprecation_status = image_info.deprecated
+                        except Exception as e:
+                            print(f"Error fetching image info for {image_name}: {e}")
+                            labels = {}
+                            deprecation_status = None
 
+                        # Append the result for this instance and its disk
+                        results.append({
+                            "Project": project_id,
+                            "VM Name": instance_name,
+                            "Source Image": image_name,
+                            "Labels": json.dumps(labels),
+                            "Deprecation Status": deprecation_status
+                        })
+
+    return results
+
+def save_to_excel(data, output_file):
+    # Convert the results to a DataFrame
+    df = pd.DataFrame(data)
+    
     # Save the DataFrame to an Excel file
     df.to_excel(output_file, index=False)
-    print(f"Data exported to {output_file}")
+    print(f"Data saved to {output_file}")
 
-    # Upload the Excel file to GCS
+def upload_to_gcs(file_path, bucket_name, destination_blob_name):
+    # Upload the Excel file to a GCS bucket
     try:
         client = storage.Client()
         bucket = client.bucket(bucket_name)
-        blob = bucket.blob("vm_image_labels.xlsx")
-        blob.upload_from_filename(output_file)
-        print(f"Export successful: File uploaded to gs://{bucket_name}/vm_image_labels.xlsx")
+        blob = bucket.blob(destination_blob_name)
+        blob.upload_from_filename(file_path)
+        print(f"File uploaded to gs://{bucket_name}/{destination_blob_name}")
     except Exception as e:
-        print(f"Error uploading to GCS: {e}")
+        print(f"Error uploading file to GCS: {e}")
+
+def export_vm_image_labels():
+    # Define your project IDs and GCS bucket
+    projects = ["project-id-1", "project-id-2"]
+    bucket_name = "your-bucket-name"
+    output_file = "vm_image_labels.xlsx"
+
+    all_results = []
+
+    # Process each project
+    for project in projects:
+        print(f"Processing Project: {project}")
+        project_data = fetch_instance_data(project)
+        all_results.extend(project_data)
+
+    # Save the results to an Excel file
+    save_to_excel(all_results, output_file)
+
+    # Upload the Excel file to GCS
+    upload_to_gcs(output_file, bucket_name, "vm_image_labels.xlsx")
+
 
 if __name__ == "__main__":
-    export_vm_image_labels_to_excel()
+    export_vm_image_labels()
