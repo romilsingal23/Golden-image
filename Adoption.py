@@ -1,14 +1,13 @@
 import json
 from google.cloud import compute_v1
 from google.cloud import storage
-import pandas as pd
 
 def fetch_instance_data(project_id):
     instance_client = compute_v1.InstancesClient()
     disk_client = compute_v1.DisksClient()
     image_client = compute_v1.ImagesClient()
     results = []
-
+    
     # List all instances in the project
     request = compute_v1.AggregatedListInstancesRequest(project=project_id)
     zones = instance_client.aggregated_list(request=request)
@@ -17,8 +16,16 @@ def fetch_instance_data(project_id):
         if instances_scoped_list.instances:
             for instance in instances_scoped_list.instances:
                 instance_name = instance.name
-                vm_creation_time = instance.creation_timestamp  # VM creation timestamp
+                vm_creation_time = instance.creation_timestamp
+                zone_name = zone.split("/")[-1] if "/" in zone else zone
+                creator = instance.labels.get("creator", "Unknown") if instance.labels else "Unknown"
                 
+                # Identify OS type
+                os_type = "Unknown"
+                if instance.metadata and instance.metadata.items:
+                    os_type_item = next((item for item in instance.metadata.items if item.key == "os"), None)
+                    os_type = os_type_item.value if os_type_item else "Unknown"
+
                 # Iterate through attached disks
                 for disk in instance.disks:
                     disk_source = disk.source
@@ -43,30 +50,34 @@ def fetch_instance_data(project_id):
                         image_name = source_image_url.split("/")[-1]
                         image_project = source_image_url.split("/")[-4]
                         
-                        # Fetch image labels and creation timestamp
+                        # Fetch image labels and creation time
                         try:
                             image_info = image_client.get(project=image_project, image=image_name)
                             labels = dict(image_info.labels) if image_info.labels else {}
+                            image_creation_time = image_info.creation_timestamp
                             deprecation_status = image_info.deprecated
-                            image_creation_time = image_info.creation_timestamp  # Image creation timestamp
                         except Exception as e:
                             print(f"Error fetching image info for {image_name}: {e}")
                             labels = {}
+                            image_creation_time = "Unknown"
                             deprecation_status = None
-                            image_creation_time = None
                         
-                        # Determine compliance status
+                        # Compliant status based on labels
                         compliant_val = "NON_COMPLIANT"
                         if labels and 'image_type' in labels:
                             if labels['image_type'] == 'golden-image':
                                 compliant_val = "COMPLIANT"
+                        
                         if deprecation_status: 
                             deprecation_status = deprecation_status.state
-                        
+                                 
                         # Store the result
                         results.append({
                             "Project": project_id,
                             "VM Name": instance_name,
+                            "Zone": zone_name,
+                            "OS Type": os_type,
+                            "VM Creator": creator,
                             "VM Creation Time": vm_creation_time,
                             "Source Image": image_name,
                             "Source Image Creation Time": image_creation_time,
@@ -80,6 +91,7 @@ def fetch_instance_data(project_id):
     return results
 
 def save_to_excel(data, output_file):
+    import pandas as pd
     df = pd.DataFrame(data)
     df.to_excel(output_file, index=False)
     print(f"Data saved to {output_file}")
@@ -96,8 +108,8 @@ def upload_to_gcs(file_path, bucket_name, destination_blob_name):
 
 def export_vm_image_labels():
     # List of project IDs
-    projects = ["zjmqcnnb-gf42-i38m-a28a-y3gmil"]  # Replace with your actual project IDs
-    bucket_name = "rsingal-gcp-build-bucket"  # Replace with your GCS bucket name
+    projects = ["project-id-1", "project-id-2"]  # Replace with your actual project IDs
+    bucket_name = "your-bucket-name"  # Replace with your GCS bucket name
     output_file = "vm_image_labels.xlsx"
 
     all_results = []
