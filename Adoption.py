@@ -1,12 +1,13 @@
 import json
-from google.cloud import compute_v1, storage, logging_v2
+from google.cloud import compute_v1, storage, logging
 from datetime import datetime
+
 
 def fetch_instance_data(project_id):
     instance_client = compute_v1.InstancesClient()
     disk_client = compute_v1.DisksClient()
     image_client = compute_v1.ImagesClient()
-    logging_client = logging_v2.Client(project=project_id)
+    logging_client = logging.Client(project=project_id)
 
     results = []
 
@@ -89,12 +90,14 @@ def get_vm_creator(logging_client, project_id, vm_name):
     """Fetches the creator of the VM from Cloud Audit Logs."""
     query = f'resource.type="gce_instance" AND protoPayload.methodName="compute.instances.insert" AND protoPayload.resourceName:"{vm_name}"'
     try:
-        entries = logging_client.list_entries(order_by=logging_v2.DESCENDING, filter_=query)
+        entries = logging_client.list_entries(order_by=logging.DESCENDING, filter_=query)
         for entry in entries:
-            if entry.payload:
-                actor = entry.payload.get('authenticationInfo', {}).get('principalEmail')
-                if actor:
-                    return actor
+            if hasattr(entry, "protoPayload"):
+                proto_payload = entry.protoPayload
+                if hasattr(proto_payload, "authenticationInfo"):
+                    actor = proto_payload.authenticationInfo.principalEmail
+                    if actor:
+                        return actor
     except Exception as e:
         print(f"Error fetching creator for VM {vm_name}: {e}")
     return "Unknown"
