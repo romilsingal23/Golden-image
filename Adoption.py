@@ -6,7 +6,6 @@ def fetch_instance_data(project_id):
     instance_client = compute_v1.InstancesClient()
     disk_client = compute_v1.DisksClient()
     image_client = compute_v1.ImagesClient()
-    
     results = []
     
     # List all instances in the project
@@ -40,12 +39,12 @@ def fetch_instance_data(project_id):
                     if source_image_url:
                         # Extract image name and project from the source image URL
                         image_name = source_image_url.split("/")[-1]
-                        image_project = source_image_url.split("/")[-3]
+                        image_project = source_image_url.split("/")[-4]
                         
                         # Fetch image labels
                         try:
                             image_info = image_client.get(project=image_project, image=image_name)
-                            labels = image_info.labels if image_info.labels else {}
+                            labels = dict(image_info.labels) if image_info.labels else {}
                             deprecation_status = image_info.deprecated
                         except Exception as e:
                             print(f"Error fetching image info for {image_name}: {e}")
@@ -53,11 +52,19 @@ def fetch_instance_data(project_id):
                             deprecation_status = None
                         
                         # Store the result
+                        compliant_val = "NON_COMPLIANT"
+                        if labels and 'image_type' in labels:
+                            if labels['image_type'] == 'golden-image':
+                                compliant_val = "COMPLIANT"
+                        if deprecation_status: 
+                            deprecation_status = deprecation_status.state
+                                 
                         results.append({
                             "Project": project_id,
                             "VM Name": instance_name,
                             "Source Image": image_name,
                             "Labels": json.dumps(labels),
+                            "Compliant Status": compliant_val,
                             "Deprecation Status": deprecation_status
                         })
                     else:
@@ -83,8 +90,8 @@ def upload_to_gcs(file_path, bucket_name, destination_blob_name):
 
 def export_vm_image_labels():
     # List of project IDs
-    projects = ["project-id-1", "project-id-2"]  # Replace with your actual project IDs
-    bucket_name = "your-bucket-name"  # Replace with your GCS bucket name
+    projects = ["zjmqcnnb-gf42-i38m-a28a-y3gmil"]  # Replace with your actual project IDs
+    bucket_name = "rsingal-gcp-build-bucket"  # Replace with your GCS bucket name
     output_file = "vm_image_labels.xlsx"
 
     all_results = []
