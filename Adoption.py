@@ -18,6 +18,14 @@ def fetch_instance_data(project_id):
             for instance in instances_scoped_list.instances:
                 instance_name = instance.name
                 vm_creation_time = instance.creation_timestamp  # VM creation timestamp
+                vm_zone = zone.split('/')[-1]  # Extract zone from the zone path
+                
+                # Get service account details
+                service_accounts = []
+                if instance.service_accounts:
+                    for service_account in instance.service_accounts:
+                        service_accounts.append(service_account.email)
+                service_account_details = ', '.join(service_accounts)  # Join service accounts if there are multiple
                 
                 # Iterate through attached disks
                 for disk in instance.disks:
@@ -68,6 +76,8 @@ def fetch_instance_data(project_id):
                             "Project": project_id,
                             "VM Name": instance_name,
                             "VM Creation Time": vm_creation_time,
+                            "VM Zone": vm_zone,
+                            "VM Service Account": service_account_details,
                             "Source Image": image_name,
                             "Image Creation Time": image_creation_time,
                             "Labels": json.dumps(labels),
