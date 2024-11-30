@@ -1,13 +1,14 @@
 import json
 from google.cloud import compute_v1
 from google.cloud import storage
+import pandas as pd
 
 def fetch_instance_data(project_id):
     instance_client = compute_v1.InstancesClient()
     disk_client = compute_v1.DisksClient()
     image_client = compute_v1.ImagesClient()
     results = []
-    
+
     # List all instances in the project
     request = compute_v1.AggregatedListInstancesRequest(project=project_id)
     zones = instance_client.aggregated_list(request=request)
@@ -16,6 +17,7 @@ def fetch_instance_data(project_id):
         if instances_scoped_list.instances:
             for instance in instances_scoped_list.instances:
                 instance_name = instance.name
+                vm_creation_time = instance.creation_timestamp  # VM creation timestamp
                 
                 # Iterate through attached disks
                 for disk in instance.disks:
@@ -41,28 +43,33 @@ def fetch_instance_data(project_id):
                         image_name = source_image_url.split("/")[-1]
                         image_project = source_image_url.split("/")[-4]
                         
-                        # Fetch image labels
+                        # Fetch image labels and creation timestamp
                         try:
                             image_info = image_client.get(project=image_project, image=image_name)
                             labels = dict(image_info.labels) if image_info.labels else {}
                             deprecation_status = image_info.deprecated
+                            image_creation_time = image_info.creation_timestamp  # Image creation timestamp
                         except Exception as e:
                             print(f"Error fetching image info for {image_name}: {e}")
                             labels = {}
                             deprecation_status = None
+                            image_creation_time = None
                         
-                        # Store the result
+                        # Determine compliance status
                         compliant_val = "NON_COMPLIANT"
                         if labels and 'image_type' in labels:
                             if labels['image_type'] == 'golden-image':
                                 compliant_val = "COMPLIANT"
                         if deprecation_status: 
                             deprecation_status = deprecation_status.state
-                                 
+                        
+                        # Store the result
                         results.append({
                             "Project": project_id,
                             "VM Name": instance_name,
+                            "VM Creation Time": vm_creation_time,
                             "Source Image": image_name,
+                            "Source Image Creation Time": image_creation_time,
                             "Labels": json.dumps(labels),
                             "Compliant Status": compliant_val,
                             "Deprecation Status": deprecation_status
@@ -73,7 +80,6 @@ def fetch_instance_data(project_id):
     return results
 
 def save_to_excel(data, output_file):
-    import pandas as pd
     df = pd.DataFrame(data)
     df.to_excel(output_file, index=False)
     print(f"Data saved to {output_file}")
