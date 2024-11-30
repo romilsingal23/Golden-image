@@ -1,30 +1,22 @@
 def get_vm_creator(logging_client, project_id, vm_name):
     """Fetches the creator of the VM from Cloud Audit Logs."""
-    query = f'resource.type="gce_instance" AND protoPayload.methodName="compute.instances.insert" AND protoPayload.resourceName:"{vm_name}"'
+    query = (
+        f'resource.type="gce_instance" '
+        f'AND protoPayload.methodName="v1.compute.instances.insert" '
+        f'AND resource.labels.instance_id:{vm_name}'
+    )
     try:
-        # Fetch the log entries using the query
+        print(f"Running query: {query}")  # Debugging the query
         entries = logging_client.list_entries(order_by=logging.DESCENDING, filter_=query)
-        
-        # Iterate through the log entries
         for entry in entries:
-            # Log entry payload inspection
-            print(f"Log entry: {entry}")
-            
-            # Extract `protoPayload` from the log entry
-            if hasattr(entry, "protoPayload") and entry.protoPayload:
-                proto_payload = entry.protoPayload
-                
-                # Extract `authenticationInfo` from `protoPayload`
-                if hasattr(proto_payload, "authenticationInfo") and proto_payload.authenticationInfo:
-                    actor = proto_payload.authenticationInfo.principalEmail
-                    print(f"Found creator: {actor}")  # Debug output
+            print(f"Log entry: {entry}")  # Debugging log entry content
+            if entry.proto_payload:
+                authentication_info = entry.proto_payload.get('authenticationInfo', {})
+                actor = authentication_info.get('principalEmail')
+                if actor:
+                    print(f"Found creator: {actor}")  # Debug output for found creator
                     return actor
-        
-        # If no creator is found, return unknown
-        print(f"No creator found for VM: {vm_name}")  # Debug output
-        return "Unknown"
-
+        print(f"No creator found for VM: {vm_name}")  # Debug output when no creator is found
     except Exception as e:
-        # Log the exception for debugging
         print(f"Error fetching creator for VM {vm_name}: {e}")
-        return "Unknown"
+    return "Unknown"
