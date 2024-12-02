@@ -1,28 +1,23 @@
 import json
 from google.cloud import compute_v1
 from google.cloud import storage
-from google.cloud import iam_v1
+from google.cloud import resourcemanager_v3
 import pandas as pd
 
-def fetch_project_owner(project_id):
-    # Initialize IAM client
-    iam_client = iam_v1.IAMPolicyClient()
-    results = []
+def get_project_owners(project_id):
+    # Create a client for the Resource Manager API
+    client = resourcemanager_v3.ProjectsClient()
 
-    # Retrieve the IAM policy for the project
-    resource = f"projects/{project_id}"
-    policy = iam_client.get_iam_policy(resource=resource)
+    # Get the IAM policy for the project
+    policy = client.get_iam_policy(resource=f'projects/{project_id}')
 
-    # Collect emails for users with the 'roles/owner' role
+    # Filter for members with 'roles/owner'
     owners = []
     for binding in policy.bindings:
         if binding.role == "roles/owner":
-            for member in binding.members:
-                # Extract the email address from the member
-                if member.startswith("user:"):
-                    owners.append(member.split(":")[1])
+            owners.extend(binding.members)
 
-    return ", ".join(owners) if owners else "No owners found"
+    return owners
 
 def fetch_instance_data(project_id):
     instance_client = compute_v1.InstancesClient()
@@ -30,8 +25,8 @@ def fetch_instance_data(project_id):
     image_client = compute_v1.ImagesClient()
     results = []
 
-    # Get the project owner
-    project_owner = fetch_project_owner(project_id)
+    # Get the project owners
+    owners = get_project_owners(project_id)
 
     # List all instances in the project
     request = compute_v1.AggregatedListInstancesRequest(project=project_id)
@@ -107,7 +102,7 @@ def fetch_instance_data(project_id):
                             "Labels": json.dumps(labels),
                             "Compliant Status": compliant_val,
                             "Deprecation Status": deprecation_status,
-                            "Project Owner": project_owner
+                            "Project Owners": ", ".join(owners)  # Adding project owners to the result
                         })
                     else:
                         print(f"No source image found for disk {disk_name} in project {project_id}")
