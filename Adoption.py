@@ -1,16 +1,37 @@
 import json
 from google.cloud import compute_v1
 from google.cloud import storage
+from google.cloud import iam_v1
 import pandas as pd
 
-#project_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
+def fetch_project_owner(project_id):
+    # Initialize IAM client
+    iam_client = iam_v1.IAMPolicyClient()
+    results = []
 
+    # Retrieve the IAM policy for the project
+    resource = f"projects/{project_id}"
+    policy = iam_client.get_iam_policy(resource=resource)
+
+    # Collect emails for users with the 'roles/owner' role
+    owners = []
+    for binding in policy.bindings:
+        if binding.role == "roles/owner":
+            for member in binding.members:
+                # Extract the email address from the member
+                if member.startswith("user:"):
+                    owners.append(member.split(":")[1])
+
+    return ", ".join(owners) if owners else "No owners found"
 
 def fetch_instance_data(project_id):
     instance_client = compute_v1.InstancesClient()
     disk_client = compute_v1.DisksClient()
     image_client = compute_v1.ImagesClient()
     results = []
+
+    # Get the project owner
+    project_owner = fetch_project_owner(project_id)
 
     # List all instances in the project
     request = compute_v1.AggregatedListInstancesRequest(project=project_id)
@@ -85,7 +106,8 @@ def fetch_instance_data(project_id):
                             "Image Creation Time": image_creation_time,
                             "Labels": json.dumps(labels),
                             "Compliant Status": compliant_val,
-                            "Deprecation Status": deprecation_status
+                            "Deprecation Status": deprecation_status,
+                            "Project Owner": project_owner
                         })
                     else:
                         print(f"No source image found for disk {disk_name} in project {project_id}")
@@ -109,7 +131,7 @@ def upload_to_gcs(file_path, bucket_name, destination_blob_name):
 
 def export_vm_image_labels():
     # List of project IDs
-    projects = ["zjmqcnnb-gf42-i38m-a28a-y3gmil","qeoomwdf-p6lv-89z3-jh5z-7u791i"]  # Replace with your actual project IDs
+    projects = ["zjmqcnnb-gf42-i38m-a28a-y3gmil", "qeoomwdf-p6lv-89z3-jh5z-7u791i"]  # Replace with your actual project IDs
     bucket_name = "rsingal-gcp-build-bucket"  # Replace with your GCS bucket name
     output_file = "vm_image_labels.xlsx"
 
