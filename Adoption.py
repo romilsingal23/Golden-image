@@ -3,6 +3,9 @@ from google.cloud import compute_v1
 from google.cloud import storage
 import pandas as pd
 
+#project_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
+
+
 def fetch_instance_data(project_id):
     instance_client = compute_v1.InstancesClient()
     disk_client = compute_v1.DisksClient()
