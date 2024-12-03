@@ -1,32 +1,13 @@
 import json
 from google.cloud import compute_v1
 from google.cloud import storage
-from google.cloud import resourcemanager_v3
 import pandas as pd
-
-def get_project_owners(project_id):
-    # Create a client for the Resource Manager API
-    client = resourcemanager_v3.ProjectsClient()
-
-    # Get the IAM policy for the project
-    policy = client.get_iam_policy(resource=f'projects/{project_id}')
-
-    # Filter for members with 'roles/owner'
-    owners = []
-    for binding in policy.bindings:
-        if binding.role == "roles/owner":
-            owners.extend(binding.members)
-
-    return owners
 
 def fetch_instance_data(project_id):
     instance_client = compute_v1.InstancesClient()
     disk_client = compute_v1.DisksClient()
     image_client = compute_v1.ImagesClient()
     results = []
-
-    # Get the project owners
-    owners = get_project_owners(project_id)
 
     # List all instances in the project
     request = compute_v1.AggregatedListInstancesRequest(project=project_id)
@@ -38,13 +19,6 @@ def fetch_instance_data(project_id):
                 instance_name = instance.name
                 vm_creation_time = instance.creation_timestamp  # VM creation timestamp
                 vm_zone = zone.split('/')[-1]  # Extract zone from the zone path
-                
-                # Get service account details
-                service_accounts = []
-                if instance.service_accounts:
-                    for service_account in instance.service_accounts:
-                        service_accounts.append(service_account.email)
-                service_account_details = ', '.join(service_accounts)  # Join service accounts if there are multiple
                 
                 # Iterate through attached disks
                 for disk in instance.disks:
@@ -83,10 +57,10 @@ def fetch_instance_data(project_id):
                             image_creation_time = None
                         
                         # Determine compliance status
-                        compliant_val = "NON_COMPLIANT"
+                        compliant_status = "NON_COMPLIANT"
                         if labels and 'image_type' in labels:
                             if labels['image_type'] == 'golden-image':
-                                compliant_val = "COMPLIANT"
+                                compliant_status = "COMPLIANT"
                         if deprecation_status: 
                             deprecation_status = deprecation_status.state
                         
@@ -96,13 +70,11 @@ def fetch_instance_data(project_id):
                             "VM Name": instance_name,
                             "VM Creation Time": vm_creation_time,
                             "VM Zone": vm_zone,
-                            "VM Service Account": service_account_details,
                             "Source Image": image_name,
                             "Image Creation Time": image_creation_time,
                             "Labels": json.dumps(labels),
-                            "Compliant Status": compliant_val,
+                            "Compliant Status": compliant_status,
                             "Deprecation Status": deprecation_status,
-                            "Project Owners": ", ".join(owners)  # Adding project owners to the result
                         })
                     else:
                         print(f"No source image found for disk {disk_name} in project {project_id}")
@@ -124,9 +96,9 @@ def upload_to_gcs(file_path, bucket_name, destination_blob_name):
     except Exception as e:
         print(f"Error uploading file to GCS: {e}")
 
-def export_vm_image_labels():
+def main(request=None):
     # List of project IDs
-    projects = ["zjmqcnnb-gf42-i38m-a28a-y3gmil", "qeoomwdf-p6lv-89z3-jh5z-7u791i"]  # Replace with your actual project IDs
+    projects = ["zjmqcnnb-gf42-i38m-a28a-y3gmil"]  # Replace with your actual project IDs
     bucket_name = "rsingal-gcp-build-bucket"  # Replace with your GCS bucket name
     output_file = "vm_image_labels.xlsx"
 
@@ -145,4 +117,4 @@ def export_vm_image_labels():
     upload_to_gcs(output_file, bucket_name, "vm_image_labels.xlsx")
 
 if __name__ == "__main__":
-    export_vm_image_labels()
+    main()
