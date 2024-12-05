@@ -1,28 +1,27 @@
 import os
 import json
-import base64
-from google.cloud import artifactregistry_v1  
-from logger.gcp_logging import initialize_logger, initialize_cloud_logger
-import installer.install_defender_vm as defender_vm
-import installer.install_defender_cluster as defender_cluster
+import logging
+import traceback
+from google.cloud import artifactregistry_v1
 
-logger = initialize_logger('compute-scan-logger')
-cloud_logger = initialize_cloud_logger('compute-scan-custom-logger')
+# Initialize logging
+logger = logging.getLogger()
+logging.basicConfig(level=logging.INFO)
+
+project_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
 
 def delete_images(project, logger):  
     logger.info("Deleting images from Artifact Registry")
     client = artifactregistry_v1.ArtifactRegistryClient()  
-    location = "us-central1"  
+    location = "us-east1"  
     repository = "gcf-artifacts"  
     parent = f"projects/{project}/locations/{location}/repositories/{repository}"  
 
-    image_default = f"{parent}/packages/{project.replace('-', '--')}__us--central1__compute--scan--manager--{project.replace('-', '--')}"
-
-    images = [image_default, f"{image_default}%2Fcache"]
     flag = False
     # List the packages in the repository
     for package in client.list_packages(parent=parent):
-        if package.name in images:
+        if 'function' in package.name:
+            print("package.name", package.name)
             logger.info(f"Package: {package.name} started deleting....")
             # Initialize request argument(s)
             request = artifactregistry_v1.DeletePackageRequest(
@@ -33,6 +32,23 @@ def delete_images(project, logger):
             operation = client.delete_package(request=request) 
             flag = True
             logger.info(f"Package deleted successfully.")
-            
+
     if not flag:
-        logger.info("No images found to delete.")
+        # logger.info("No images found to delete.")
+        print("No images found to delete.")
+    return {"statusCode": 200, "message": "Artifact Images deleted successfully"}
+ 
+def main(request=None):
+    """HTTP Cloud Function to delete images from Artifact Registry."""
+    try:
+        logger.info("Starting the main function for deleting images from Artifact Registry")
+        response = delete_images(project_id, logger)
+        logger.info(f"Function executed successfully. Response: {response}")
+        return ( json.dumps(response), response.get("statusCode", 500), {"Content-Type": "application/json"}, )
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        logger.error("".join(traceback.format_exc()))  # Log full traceback
+        return ( json.dumps({"error": "Internal Server Error"}), 500, {"Content-Type": "application/json"},)
+
+if __name__ == "__main__":
+    main()
