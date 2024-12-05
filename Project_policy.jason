@@ -1,0 +1,16 @@
+{
+  "name": "projects/PROJECT_ID/policies/compute.restrictImageFamily",
+  "spec": {
+    "rules": [
+      {
+        "denyAll": true,
+        "values": {
+          "deniedValues": [
+            "projects/rhel-cloud/global/images/family/rhel-9",
+            "projects/windows-cloud/global/images/family/windows-2022"
+          ]
+        }
+      }
+    ]
+  }
+}
