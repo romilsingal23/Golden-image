@@ -1,27 +1,30 @@
 #!/bin/bash
 
-PROJECT_ID=$1
-LOCATION=$2
-REPOSITORY=$3
-
+# Print status message
 echo "Fetching packages from Artifact Registry..."
-PACKAGES=$(gcloud artifacts packages list \
-  --project="${PROJECT_ID}" \
-  --location="${LOCATION}" \
-  --repository="${REPOSITORY}" \
-  --format="value(name)")
 
-if [[ -z "$PACKAGES" ]]; then
+# Fetch the list of Docker images and store in a file
+gcloud artifacts docker images list \
+  us-east1-docker.pkg.dev/zjmqcnnb-gf42-i38m-a28a-y3gmi/gcf-artifacts \
+  --format="value(IMAGE)" > package_list.txt
+
+# Check if the file is empty
+if [[ ! -s package_list.txt ]]; then
   echo "No packages found."
   exit 0
 fi
 
-for PACKAGE in $PACKAGES; do
+# Iterate through each line in the file
+while IFS= read -r PACKAGE; do
+  # Check if the package name contains the word "function"
   if [[ "$PACKAGE" == *"function"* ]]; then
     echo "Deleting package: $PACKAGE"
-    gcloud artifacts packages delete "$PACKAGE" \
-      --project="${PROJECT_ID}" \
-      --location="${LOCATION}" \
-      --quiet
+    # Delete the package
+    gcloud artifacts docker images delete "$PACKAGE" --quiet
+  else
+    echo "Skipping package: $PACKAGE"
   fi
-done
+done < package_list.txt
+
+# Clean up: Remove the file after processing
+rm -f package_list.txt
