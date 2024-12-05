@@ -1,14 +1,11 @@
 import os
-import io
 import json
 import logging
 import requests
-import pandas as pd
-from loguru import logger
-from google.cloud import storage
 from google.cloud import compute_v1
 from google.cloud import secretmanager
 from google.cloud import resourcemanager_v3
+from google.cloud import storage
 
 TENANT_ID = os.getenv('TENANT_ID', "db05faca-c82a-4b9d-b9c5-0f64b6755421")
 X_API_KEY_VALUE = os.getenv('X_API_KEY', "x-api-key")
@@ -18,14 +15,13 @@ CLIENT_ID = os.getenv('CLIENT_ID', "client-id")
 CLIENT_SECRET_NAME = os.getenv('CLIENT_SECRET_NAME', "client-secret")
 GRAPH_API_SCOPE_URL = os.getenv('GRAPH_API_SCOPE_URL', "https://graph.microsoft.com/.default")
 GRAPH_API_USERS_URL = os.getenv('GRAPH_API_USERS_URL', "https://graph.microsoft.com/v1.0/users")
-PROJECT_ID = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
+PROJECT_ID = os.getenv('PROJECT_ID', "your-gcp-project-id")
 
 def fetch_projects():
     """Fetch all projects the service account has access to using the Resource Manager API."""
     client = resourcemanager_v3.ProjectsClient()
     projects = []
 
-    # List all projects the service account has access to
     for project in client.list_projects():
         if project.state == resourcemanager_v3.Project.State.ACTIVE:
             projects.append(project.project_id)
@@ -34,7 +30,6 @@ def fetch_projects():
 
 def call_api_with_batch_get(account_ids, x_api_key, cat_table_url):
     """Call API with batch get to fetch additional data like MSID and employee ID."""
-    exceptions = []
     try:
         auth_headers = {'X-API-KEY': x_api_key}
         payload = {
@@ -44,7 +39,6 @@ def call_api_with_batch_get(account_ids, x_api_key, cat_table_url):
                 }
             }
         }
-        
         response = requests.post(cat_table_url, headers=auth_headers, json=payload)
         payload = response.json()
         filtered_data = []
@@ -58,10 +52,8 @@ def call_api_with_batch_get(account_ids, x_api_key, cat_table_url):
             filtered_data.append(filtered_item)
         return filtered_data
     except Exception as e:
-        logging.error(
-            'Error in getting ASKids and MSids ids from api endpoint\'%s\':', e)
-        exceptions.append(e)
-        return exceptions
+        logging.error(f"Error in getting ASKids and MSids ids from API endpoint: {e}")
+        return []
 
 def get_secret_gcp(secret_id):
     """Fetch secret from GCP Secret Manager."""
@@ -70,9 +62,8 @@ def get_secret_gcp(secret_id):
     response = client.access_secret_version(request={"name": name})
     return response.payload.data.decode("UTF-8")
 
-def get_email_ids_from_employeeIds(employee_ids):
+def get_email_ids_from_employee_ids(employee_ids):
     """Get email IDs based on employee IDs using Microsoft Graph API."""
-    exceptions = []
     try:
         client_id = get_secret_gcp(CLIENT_ID)
         client_secret = get_secret_gcp(CLIENT_SECRET_NAME)
@@ -86,30 +77,24 @@ def get_email_ids_from_employeeIds(employee_ids):
         headers = {'Content-type': 'application/x-www-form-urlencoded'}
         response = requests.post(authority_url, headers=headers, data=request_data)
 
-        if employee_ids and response.status_code == 200:
-            employeeid_chunks = [employee_ids[x:x+15] for x in range(0, len(employee_ids), 15)]
+        if response.status_code == 200 and employee_ids:
+            employeeid_chunks = [employee_ids[x:x + 15] for x in range(0, len(employee_ids), 15)]
             response_data_by_employeeid = {}
-            for empidschunk in employeeid_chunks:
-                filter_string = ','.join(["'{}'".format(empId) for empId in empidschunk])
+            for emp_ids_chunk in employeeid_chunks:
+                filter_string = ','.join([f"'{emp_id}'" for emp_id in emp_ids_chunk])
                 graph_api_url = f'{GRAPH_API_USERS_URL}?$filter=employeeId in ({filter_string})&$select=mail,employeeId'
-                headers = {
-                    'Accept': 'application/json',
-                    'Authorization': f"Bearer {response.json()['access_token']}"
-                }
+                headers = {'Accept': 'application/json', 'Authorization': f"Bearer {response.json()['access_token']}"}
                 users_response = requests.get(graph_api_url, headers=headers)
+
                 if users_response.status_code == 200:
                     users = users_response.json().get('value')
                     for user in users:
                         employee_group = user.get('employeeId')
                         response_data_by_employeeid[employee_group] = user.get('mail')
-                else:
-                    exceptions.append(response.text)
-                    return exceptions
             return response_data_by_employeeid
     except Exception as e:
-        logging.error("Error while getting email ids from Graph API: %s", e)
-        exceptions.append(e)
-        return exceptions
+        logging.error(f"Error while getting email ids from Graph API: {e}")
+        return {}
 
 def fetch_instance_data(project_ids):
     """Fetch VM and related data for all projects."""
@@ -117,13 +102,8 @@ def fetch_instance_data(project_ids):
     disk_client = compute_v1.DisksClient()
     image_client = compute_v1.ImagesClient()
     results = []
-    account_ids = []
 
-    # Iterate over all projects
     for project_id in project_ids:
-        print(f"Fetching VMs for Project: {project_id}")
-        
-        # List all instances in the project
         request = compute_v1.AggregatedListInstancesRequest(project=project_id, max_results=300)
 
         while True:
@@ -133,21 +113,17 @@ def fetch_instance_data(project_ids):
                 if 'instances' in instances_scoped_list:
                     for instance in instances_scoped_list.instances:
                         instance_name = instance.name
-                        vm_creation_time = instance.creation_timestamp  # VM creation timestamp
-                        vm_zone = zone.split('/')[-1]  # Extract zone from the zone path
+                        vm_creation_time = instance.creation_timestamp
+                        vm_zone = zone.split('/')[-1]
 
-                        # Iterate through attached disks
                         for disk in instance.disks:
                             disk_source = disk.source
-
                             if not disk_source:
                                 continue
 
-                            # Extract disk name and zone
                             disk_name = disk_source.split("/")[-1]
                             disk_zone = disk_source.split("/zones/")[1].split("/")[0]
 
-                            # Fetch the source image URL from the disk
                             try:
                                 disk_info = disk_client.get(project=project_id, zone=disk_zone, disk=disk_name)
                                 source_image_url = disk_info.source_image
@@ -156,23 +132,20 @@ def fetch_instance_data(project_ids):
                                 continue
 
                             if source_image_url:
-                                # Extract image name and project from the source image URL
                                 image_name = source_image_url.split("/")[-1]
                                 image_project = source_image_url.split("/")[-4]
 
-                                # Fetch image labels and creation timestamp
                                 try:
                                     image_info = image_client.get(project=image_project, image=image_name)
                                     labels = dict(image_info.labels) if image_info.labels else {}
                                     deprecation_status = image_info.deprecated
-                                    image_creation_time = image_info.creation_timestamp  # Image creation timestamp
+                                    image_creation_time = image_info.creation_timestamp
                                 except Exception as e:
                                     print(f"Error fetching image info for {image_name}: {e}")
                                     labels = {}
                                     deprecation_status = None
                                     image_creation_time = None
 
-                                # Determine compliance status
                                 compliant_status = "NON_COMPLIANT"
                                 if labels and 'image_type' in labels:
                                     if labels['image_type'] == 'golden-image':
@@ -180,7 +153,6 @@ def fetch_instance_data(project_ids):
                                 if deprecation_status:
                                     deprecation_status = deprecation_status.state
 
-                                # Store the result
                                 results.append({
                                     "Project": project_id,
                                     "VM Name": instance_name,
@@ -205,7 +177,6 @@ def fetch_instance_data(project_ids):
 def main():
     """Main function to fetch VM data for all projects."""
     try:
-        # Fetch all projects that the service account has access to
         projects = fetch_projects()
         if not projects:
             print("No projects found that the service account has access to.")
@@ -217,4 +188,33 @@ def main():
         # Call the API with batch get
         unique_account_ids = list(set([result["Project"] for result in all_results]))
         X_API_KEY = get_secret_gcp(X_API_KEY_VALUE)
-        result_json_array = call_api_with_batch_get(unique_account_ids, X_API_KEY
+        result_json_array = call_api_with_batch_get(unique_account_ids, X_API_KEY, CAT_TABLE_URL)
+
+        # Map the MSID and employee IDs from the API response to the VM data
+        subscription_mapping = {}
+        for obj in result_json_array:
+            if obj["employeeid"]:
+                subscription_mapping[obj["subscription_id"]] = {
+                    "askid": obj["askid"],
+                    "msid": obj["msid"],
+                    "employeeid": obj["employeeid"]
+                }
+
+        # Add employee details to VM data
+        for obj in all_results:
+            subscription_id = obj["Project"]
+            if subscription_id in subscription_mapping:
+                obj["askid"] = subscription_mapping[subscription_id]["askid"]
+                obj["msid"] = subscription_mapping[subscription_id]["msid"]
+                obj["employeeid"] = subscription_mapping[subscription_id]["employeeid"]
+
+        # Convert results to DataFrame and print/export
+        df = pd.DataFrame(all_results)
+        df.to_csv('vm_data.csv', index=False)
+        print("VM Data exported to vm_data.csv")
+
+    except Exception as e:
+        logging.error(f"Error in main function: {e}")
+
+if __name__ == "__main__":
+    main()
