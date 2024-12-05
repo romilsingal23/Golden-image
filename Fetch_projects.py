@@ -1,17 +1,14 @@
-from google.cloud import resourcemanager_v3
-
 def fetch_projects():
-    """Fetch all projects the service account has access to using the Resource Manager API."""
-    client = resourcemanager_v3.ProjectsClient()
-    projects = []
+    """Fetch the accessible projects for the service account."""
+    try:
+        client = resourcemanager_v3.ProjectsClient()
+        projects = []
 
-    for project in client.list_projects():
-        if project.state == resourcemanager_v3.Project.State.ACTIVE:
-            projects.append(project.project_id)
-    
-    return projects
+        for project in client.list_projects():
+            if project.state == resourcemanager_v3.Project.State.ACTIVE:
+                projects.append(project.project_id)
 
-# Test the function
-if __name__ == "__main__":
-    projects = fetch_projects()
-    print("Projects:", projects)
+        return projects
+    except Exception as e:
+        logging.error(f"Error fetching projects: {e}")
+        return []
