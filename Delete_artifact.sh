@@ -6,7 +6,7 @@ echo "Fetching Docker images from Artifact Registry..."
 # Fetch the list of Docker images, split by 'gcf-artifacts/' to get everything after it, and store in a variable
 IMAGE_LIST=$(gcloud artifacts docker images list \
   us-east1-docker.pkg.dev/zjmqcnnb-gf42-i38m-a28a-y3gmil/gcf-artifacts \
-  --format="value(IMAGE)" | sed 's|.*gcf-artifacts/||')
+  --format="value(IMAGE)" | sed 's|.*gcf-artifacts/||' | sort | uniq)
 
 # Check if no images were found
 if [[ -z "$IMAGE_LIST" ]]; then
@@ -14,7 +14,7 @@ if [[ -z "$IMAGE_LIST" ]]; then
   exit 0
 fi
 
-# Process each image name
+# Process each unique image name
 for IMAGE_NAME in $IMAGE_LIST; do
   # Check if the image name contains the word "function"
   if [[ "$IMAGE_NAME" == *"function"* ]]; then
