@@ -1,0 +1,14 @@
+{
+  "name": "organizations/ORGANIZATION_ID/policies/compute.trustedImageProjects",
+  "spec": {
+    "rules": [
+      {
+        "values": {
+          "allowedValues": [
+            "projects/trusted-image-project-name",
+          ]
+        }
+      }
+    ]
+  }
+}
