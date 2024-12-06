@@ -1,0 +1,9 @@
+{
+  "constraint": "constraints/custom.denySpecificImages",
+  "listPolicy": {
+    "deniedValues": [
+      "projects/rhel-cloud/global/images/family/rhel-9",
+      "projects/windows-cloud/global/images/family/windows-server-2022"
+    ]
+  }
+}
