@@ -1,0 +1,14 @@
+{
+  "name": "constraints/custom.denySpecificImages",
+  "title": "Deny Specific Images",
+  "description": "Restrict the use of specific Marketplace images like RHEL 9 and Windows Server 2022 when creating VM instances.",
+  "constraintDefault": "ALLOW",
+  "listConstraint": {
+    "deniedValues": [
+      "projects/rhel-cloud/global/images/family/rhel-9",
+      "projects/windows-cloud/global/images/family/windows-server-2022"
+    ],
+    "supportsUnder": true
+  },
+  "resourceType": "compute.googleapis.com/Instance"
+}
