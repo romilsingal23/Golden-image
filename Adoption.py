@@ -9,15 +9,16 @@ from google.cloud import storage
 from google.cloud import compute_v1
 from google.cloud import secretmanager
 
-TENANT_ID = os.getenv('TENANT_ID', "db05faca-c82a-4b9d-b9c5-0f64b6755421")
-X_API_KEY_VALUE = os.getenv('X_API_KEY', "x-api-key")
-CAT_TABLE_URL = os.getenv('CAT_TABLE_URL', "https://tp8e3wgfo2.execute-api.us-east-1.amazonaws.com/v1/accounts/batchget")
-AUTHORITY_URL = os.getenv('AUTHORITY_URL', "https://login.microsoftonline.com/{}/oauth2/v2.0/token")
-CLIENT_ID = os.getenv('CLIENT_ID', "client-id")
-CLIENT_SECRET_NAME = os.getenv('CLIENT_SECRET_NAME', "client-secret")
-GRAPH_API_SCOPE_URL = os.getenv('GRAPH_API_SCOPE_URL', "https://graph.microsoft.com/.default")
-GRAPH_API_USERS_URL = os.getenv('GRAPH_API_USERS_URL', "https://graph.microsoft.com/v1.0/users")
-project_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
+TENANT_ID = os.getenv('TENANT_ID')
+X_API_KEY_VALUE = os.getenv('X_API_KEY')
+CAT_TABLE_URL = os.getenv('CAT_TABLE_URL')
+AUTHORITY_URL = os.getenv('AUTHORITY_URL')
+CLIENT_ID = os.getenv('CLIENT_ID')
+CLIENT_SECRET_NAME = os.getenv('CLIENT_SECRET_NAME')
+GRAPH_API_SCOPE_URL = os.getenv('GRAPH_API_SCOPE_URL')
+GRAPH_API_USERS_URL = os.getenv('GRAPH_API_USERS_URL')
+project_id = os.getenv('PROJECT_ID')
+bucket_name = os.getenv('BUCKET_NAME') 
 
 def call_api_with_batch_get(account_ids, x_api_key, cat_table_url):
     exceptions = []
@@ -57,7 +58,8 @@ def get_email_ids_from_employeeIds(employee_ids):
         try:
             client_id = get_secret_gcp(CLIENT_ID)
             responce_client_secret = get_secret_gcp(CLIENT_SECRET_NAME)
-            authority_url = AUTHORITY_URL.format(TENANT_ID)
+            tenant_id = get_secret_gcp(TENANT_ID)
+            authority_url = AUTHORITY_URL.format(tenant_id)
             request_data = {
                 'grant_type': 'client_credentials',
                 'client_id': client_id,
@@ -111,7 +113,7 @@ def fetch_instance_data(project_id):
     # zones = instance_client.aggregated_list(request=request)
     request = compute_v1.AggregatedListInstancesRequest(project=project_id, max_results=300)
     while True:
-        response = instance_client.aggregated_list(request=request) 
+        zones = instance_client.aggregated_list(request=request) 
         for zone, instances_scoped_list in zones:
             if instances_scoped_list.instances:
                 for instance in instances_scoped_list.instances:
@@ -135,7 +137,7 @@ def fetch_instance_data(project_id):
                             disk_info = disk_client.get(project=project_id, zone=disk_zone, disk=disk_name)
                             source_image_url = disk_info.source_image
                         except Exception as e:
-                            print(f"Error fetching disk info for {disk_name}: {e}")
+                            logger.info(f"Error fetching disk info for {disk_name}: {e}")
                             continue
                         
                         if source_image_url:
@@ -150,7 +152,7 @@ def fetch_instance_data(project_id):
                                 deprecation_status = image_info.deprecated
                                 image_creation_time = image_info.creation_timestamp  # Image creation timestamp
                             except Exception as e:
-                                print(f"Error fetching image info for {image_name}: {e}")
+                                logger.info(f"Error fetching image info for {image_name}: {e}")
                                 labels = {}
                                 deprecation_status = None
                                 image_creation_time = None
@@ -177,10 +179,10 @@ def fetch_instance_data(project_id):
                                 "Deprecation Status": deprecation_status,
                             })
                         else:
-                            print(f"No source image found for disk {disk_name} in project {project_id}")
+                            logger.info(f"No source image found for disk {disk_name} in project {project_id}")
     
-        if response.next_page_token:
-            request.page_token = response.next_page_token
+        if zones.next_page_token:
+            request.page_token = zones.next_page_token
         else:
             break
  
@@ -220,23 +222,22 @@ def upload_to_gcs(file_path, bucket_name, destination_blob_name, buffer):
         blob = bucket.blob(destination_blob_name)
         # blob.upload_from_filename(file_path)
         blob.upload_from_file(buffer, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        print(f"File uploaded to gs://{bucket_name}/{destination_blob_name}")
+        logger.info(f"File uploaded to gs://{bucket_name}/{destination_blob_name}")
     except Exception as e:
-        print(f"Error uploading file to GCS: {e}")
+        logger.info(f"Error uploading file to GCS: {e}")
 
 def main(request=None):
     try:
         # List of project IDs
         
-        projects = ["zjmqcnnb-gf42-i38m-a28a-y3gmil"]  # Replace with your actual project IDs
-        bucket_name = "rsingal-gcp-build-bucket"  # Replace with your GCS bucket name
+        projects = [project_id]  # Replace with your actual project IDs
         output_file = "vm_image_labels.xlsx"
 
         all_results = []
 
         # Process each project
         for project in projects:
-            print(f"Processing Project: {project}")
+            logger.info(f"Processing Project: {project}")
             project_data = fetch_instance_data(project)
             all_results.extend(project_data)
 
