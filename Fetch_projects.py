@@ -1,44 +1,67 @@
+from typing import Dict, List, Union
 from google.cloud import resourcemanager_v3
-from loguru import logger
-import os
 
-# Function to list all projects in an organization
-def list_projects_in_organization(organization_id):
-    try:
-        client = resourcemanager_v3.ProjectsClient()
-        org_name = f"organizations/{organization_id}"
-        request = resourcemanager_v3.ListProjectsRequest(parent=org_name)
+def projects_in_folder(folder_id: str) -> List[str]:
+    """
+    Retrieves a list of active project names within a specified folder.
 
-        projects = []
-        for project in client.list_projects(request=request):
-            if project.state == resourcemanager_v3.Project.State.ACTIVE:
-                projects.append(project.project_id)
+    Args:
+        folder_id (str): The ID of the folder.
 
-        logger.info(f"Found {len(projects)} active projects in organization {organization_id}")
-        return projects
-    except Exception as e:
-        logger.error(f"Error while listing projects in organization {organization_id}: {e}")
-        return []
+    Returns:
+        List[str]: A list of active project names within the folder.
+    """
+    client = resourcemanager_v3.ProjectsClient()
+    query = f'parent.type:folder parent.id:{folder_id}'
+    request = resourcemanager_v3.SearchProjectsRequest(query=query)
+    response = client.search_projects(request=request)
 
-def main():
-    try:
-        # Replace with your organization ID
-        organization_id = os.getenv("ORGANIZATION_ID")
-        if not organization_id:
-            raise ValueError("ORGANIZATION_ID environment variable is not set.")
-        
-        # Fetch all projects in the organization
-        projects = list_projects_in_organization(organization_id)
-        if not projects:
-            logger.warning("No active projects found in the organization.")
-            return {"message": "No active projects found in the organization"}, 404
+    projects = []
+    for project in response:
+        if project.state == resourcemanager_v3.Project.State.ACTIVE:
+            projects.append(project.display_name)
 
-        # Return the list of projects
-        return {"projects": projects}, 200
-    except Exception as e:
-        logger.error("Error in main function: %s", e)
-        return {"error": str(e)}, 500
+    return projects
 
-if __name__ == "__main__":
-    result = main()
-    print(result)
+def get_folder_hierarchy(
+    parent_id: str = "organizations/12345",
+    hierarchy: Union[Dict[str, Union[str, List[str]]], None] = None,
+) -> Dict[str, Union[str, List[str]]]:
+    """
+    Retrieves the folder hierarchy of the Google Cloud resource structure starting from the specified parent ID.
+
+    Args:
+        parent_id (str): The ID of the parent resource to start the hierarchy from.
+                         Defaults to "organizations/12345".
+        hierarchy (Union[Dict[str, Union[str, List[str]]], None]): The dictionary representing the folder hierarchy.
+                                                                   Defaults to None.
+
+    Returns:
+        Dict[str, Union[str, List[str]]]: A dictionary representing the folder hierarchy of the resource structure.
+                                          The keys represent folder names, and the values can either be lists of
+                                          project names within a folder or sub-hierarchies (dictionaries).
+    """
+    if hierarchy is None:
+        hierarchy = {}
+
+    client = resourcemanager_v3.FoldersClient()
+    request = resourcemanager_v3.ListFoldersRequest(parent=parent_id)
+    response = client.list_folders(request=request)
+
+    for folder in response:
+        folder_id = folder.name.split('/')[-1]
+        folder_name = folder.display_name
+        projects = projects_in_folder(folder_id)
+
+        if projects:
+            hierarchy[folder_name] = projects
+            pass
+        else:
+            sub_hierarchy = get_folder_hierarchy(parent_id=folder.name, hierarchy={})
+            if sub_hierarchy:
+                hierarchy[folder_name] = sub_hierarchy
+
+    return hierarchy
+
+folder_hierarchy_data = get_folder_hierarchy()
+print(folder_hierarchy_data)
