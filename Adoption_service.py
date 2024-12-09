@@ -25,8 +25,8 @@ def list_all_projects_in_organization(org_id):
     all_projects = []
     for parent in all_parents:
         request = resourcemanager_v3.SearchProjectsRequest(query=f"parent:{parent}")
-        all_projects.extend([
-            project.project_id for project in client.search_projects(request=request)
-            if project.state.name == "ACTIVE"
-        ])
+        for project in client.search_projects(request=request):
+            if project.state.name == "ACTIVE":
+                all_projects.append(project.project_id)
+
     return all_projects
