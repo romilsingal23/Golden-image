@@ -1,0 +1,17 @@
+{
+  "constraint_name": "custom.blockRedHat9Windows22Images",
+  "custom_constraint": {
+    "deployment_group": "hcc-ring-internal",
+    "condition": "resource.properties.disks.all(d, d.initializeParams.sourceImage.matches('projects/rhel-cloud/global/images/family/rhel-9') || d.initializeParams.sourceImage.matches('projects/windows-cloud/global/images/family/windows-2022'))",
+    "description": "Restricts the creation of virtual machines using Red Hat 9 family images from rhel-cloud and Windows Server 2022 family images from windows-cloud.",
+    "display_name": "Block Red Hat 9 and Windows Server 2022 Images",
+    "action_type": "DENY",
+    "method_types": [
+      "CREATE",
+      "UPDATE"
+    ],
+    "resource_types": [
+      "compute.googleapis.com/Instance"
+    ]
+  }
+}
