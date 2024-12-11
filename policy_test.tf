@@ -16,19 +16,11 @@ provider "google" {
   billing_project       = "pc-insights-dev"
 }
 
-#
-# Standard test module
-#
-
 module "helpers" {
   source           = "../modules/test_helpers"
   policy_folder    = "standard"
-  policy_file_name = "custom.disableVmNestedVirtualization.json"
+  policy_file_name = "custom.blockRedHat9Windows22Images.json"  # Path to the policy file
 }
-
-#
-# Policy
-#
 
 module "gcp_policy" {
   source                   = "../../modules/org_policy_v2"
@@ -41,10 +33,6 @@ module "gcp_policy" {
   constraint_name_override = module.helpers.constraint_name
 }
 
-#
-# Time sleep - wait for policy to be enforced after creation
-#
-
 resource "time_sleep" "wait" {
   create_duration = "120s"
 
@@ -53,107 +41,83 @@ resource "time_sleep" "wait" {
     module.gcp_policy.constraint
   ]
 }
-# Important: Make sure to add depends_on to the resources that are created after the policy
-#
-# Compliant tests
-#
 
+#
+# Compliant Test: Instances with allowed images
+#
 
 resource "google_compute_instance" "compliant_explicit" {
-    name         = "my-compliant-explicit-instance-555"
-    zone             = "us-central1-a"
-    machine_type     = "n2d-standard-2"
-    min_cpu_platform = "AMD Milan"
+  name               = "my-compliant-explicit-instance-555"
+  zone               = "us-central1-a"
+  machine_type       = "n2d-standard-2"
+  min_cpu_platform   = "AMD Milan"
 
-    confidential_instance_config {
-        enable_confidential_compute = true
+  confidential_instance_config {
+    enable_confidential_compute = true
+  }
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2004-lts"  # A compliant image (Ubuntu)
     }
+  }
 
-    boot_disk {
-        initialize_params {
-        image = "ubuntu-os-cloud/ubuntu-2004-lts"
-        labels = {
-            my_label = "value"
-        }
-        }
-    }
+  network_interface {
+    network = "default"
+  }
 
-    network_interface {
-        network = "default"
-    }
-    advanced_machine_features {
-        enable_nested_virtualization = false
-    }
-
-    metadata_startup_script = "echo hi > /test.txt"
-    depends_on = [ time_sleep.wait ]
-}
-
-
-resource "google_compute_instance" "compliant_default" {
-    name         = "my-compliant-default-instance-555"
-    zone             = "us-central1-a"
-    machine_type     = "n2d-standard-2"
-    min_cpu_platform = "AMD Milan"
-
-    confidential_instance_config {
-        enable_confidential_compute = true
-    }
-
-    boot_disk {
-        initialize_params {
-        image = "ubuntu-os-cloud/ubuntu-2004-lts"
-        labels = {
-            my_label = "value"
-        }
-        }
-    }
-
-    network_interface {
-        network = "default"
-    }
-    # advanced_machine_features {     # Addvanced machine features can't be defined without enable_nested_virtualization
-    #     # enable_nested_virtualization = false
-    # }
-
-    metadata_startup_script = "echo hi > /test.txt"
-    depends_on = [ time_sleep.wait ]
+  metadata_startup_script = "echo hi > /test.txt"
+  depends_on = [time_sleep.wait]
 }
 
 #
-# Non Compliant tests
+# Non-Compliant Test: Instances with restricted images (RHEL 9 or Windows 2022)
 #
 
-# Expect to see: Error: googleapi: Error 400: Operation denied by custom org policy: [<CONSTRAINT_NAME>: <DESCRIPTION>
-# Or if you still have a manually deployed version Error: googleapi: Error 412: Multiple constraints were violated. See details for more information. 
+resource "google_compute_instance" "non_compliant_rhel9" {
+  name               = "my-non-compliant-instance-rhel9-555"
+  zone               = "us-central1-a"
+  machine_type       = "n2d-standard-2"
+  min_cpu_platform   = "AMD Milan"
 
-resource "google_compute_instance" "non_compliant" {
-    name         = "my-non-compliant-instance-555"
-    zone             = "us-central1-a"
-    machine_type     = "n2d-standard-2"
-    min_cpu_platform = "AMD Milan"
+  confidential_instance_config {
+    enable_confidential_compute = true
+  }
 
-    confidential_instance_config {
-        enable_confidential_compute = true
+  boot_disk {
+    initialize_params {
+      image = "projects/rhel-cloud/global/images/family/rhel-9"  # A restricted image (RHEL 9)
     }
+  }
 
-    boot_disk {
-        initialize_params {
-        image = "ubuntu-os-cloud/ubuntu-2004-lts"
-        labels = {
-            my_label = "value"
-        }
-        }
-    }
+  network_interface {
+    network = "default"
+  }
 
-    network_interface {
-        network = "default"
-    }
-    advanced_machine_features {
-        enable_nested_virtualization = true
-        # threads_per_core = 1
-    }
+  metadata_startup_script = "echo hi > /test.txt"
+  depends_on = [time_sleep.wait]
+}
 
-    metadata_startup_script = "echo hi > /test.txt"
-    depends_on = [ time_sleep.wait ]
+resource "google_compute_instance" "non_compliant_windows2022" {
+  name               = "my-non-compliant-instance-windows2022-555"
+  zone               = "us-central1-a"
+  machine_type       = "n2d-standard-2"
+  min_cpu_platform   = "AMD Milan"
+
+  confidential_instance_config {
+    enable_confidential_compute = true
+  }
+
+  boot_disk {
+    initialize_params {
+      image = "projects/windows-cloud/global/images/family/windows-2022"  # A restricted image (Windows Server 2022)
+    }
+  }
+
+  network_interface {
+    network = "default"
+  }
+
+  metadata_startup_script = "echo hi > /test.txt"
+  depends_on = [time_sleep.wait]
 }
