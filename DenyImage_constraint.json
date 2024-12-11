@@ -2,7 +2,7 @@
   "constraint_name": "custom.blockRedHat9Windows22MarketplaceImages",
   "custom_constraint": {
     "deployment_group": "hcc-ring-internal",
-    "condition": "resource.properties.disks.all(d, d.initializeParams.sourceImage.matches('projects/rhel-cloud/global/images/family/rhel-9') || d.initializeParams.sourceImage.matches('projects/windows-cloud/global/images/.*windows-2022.*'))",
+    "condition": "resource.sourceImage.matches ("(.*Red Hat Enterprise Linux 9*.|^$)") || resource.sourceImage.matches ("(.*Windows Server 2022 Datacenter*.|^$)"),
     "description": "Restricts the creation of virtual machines using the Red Hat 9 family from the rhel-cloud project and Windows Server 2022 from the windows-cloud project.",
     "display_name": "Public Cloud Platform: Block Red Hat 9 Family and Windows Server 2022 Marketplace Images",
     "action_type": "DENY",
@@ -11,7 +11,8 @@
       "UPDATE"
     ],
     "resource_types": [
-      "compute.googleapis.com/Instance"
+      "compute.googleapis.com/Image"
+
     ]
   }
 }
