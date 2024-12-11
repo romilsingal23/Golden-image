@@ -1,9 +1,17 @@
 {
-  "constraint": "constraints/custom.denySpecificImages",
-  "listPolicy": {
-    "deniedValues": [
-      "projects/rhel-cloud/global/images/family/rhel-9",
-      "projects/windows-cloud/global/images/family/windows-server-2022"
+  "constraint_name": "custom.blockRedHat9Windows22MarketplaceImages",
+  "custom_constraint": {
+    "deployment_group": "hcc-ring-internal",
+    "condition": "resource.properties.disks.all(d, d.initializeParams.sourceImage.matches('.*Red Hat Enterprise Linux 9.*') || d.initializeParams.sourceImage.matches('.*Windows Server 2022 Datacenter.*'))",
+    "description": "Restricts the creation of virtual machines using the Red Hat 9 Image and Windows Server 2022 Image from Marketplace.",
+    "display_name": "Public Cloud Platform: Restrict Red Hat 9 and Windows Server 2022 Marketplace Images",
+    "action_type": "DENY",
+    "method_types": [
+      "CREATE",
+      "UPDATE"
+    ],
+    "resource_types": [
+      "compute.googleapis.com/Instance"
     ]
   }
 }
