@@ -3,7 +3,7 @@
   "custom_constraint": {
     "deployment_group": "hcc-ring-internal",
     "condition": "resource.sourceImage.matches ('(.*Red Hat Enterprise Linux 9*.|^$)') || resource.sourceImage.matches ('(.*Windows Server 2022 Datacenter*.|^$)')",
-    "description": "Restricts the creation of virtual machines using the Red Hat 9 family and Windows Server 2022 family Marketplace.",
+    "description": "Restricts the creation of virtual machines using the Red Hat 9 Image and Windows Server 2022 Image from Marketplace.",
     "display_name": "Public Cloud Platform: Restrict Red Hat 9 and Windows Server 2022 Marketplace Images",
     "action_type": "DENY",
     "method_types": [
