@@ -1,14 +1,41 @@
 {
-  "name": "organizations/ORGANIZATION_ID/policies/compute.trustedImageProjects",
-  "spec": {
-    "rules": [
-      {
-        "values": {
-          "allowedValues": [
-            "projects/trusted-image-project-name",
-          ]
-        }
+  "use_v1_resource": true,
+  "constraint": "compute.trustedImageProjects",
+  "boolean_policy": {
+    "enforced": true
+  },
+  "deployment_group_parameters": {
+    "hcc-ring-internal": {
+      "list_policy": {
+        "allowed_values": [
+          "projects/trusted-image-project-1",
+          "projects/trusted-image-project-2"
+        ]
       }
-    ]
+    },
+    "hcc-ring-dce": {
+      "list_policy": {
+        "allowed_values": [
+          "projects/trusted-image-project-1",
+          "projects/trusted-image-project-2"
+        ]
+      }
+    },
+    "hcc-ring-nonprod": {
+      "list_policy": {
+        "allowed_values": [
+          "projects/trusted-image-project-1",
+          "projects/trusted-image-project-2"
+        ]
+      }
+    },
+    "hcc-ring-prod": {
+      "list_policy": {
+        "allowed_values": [
+          "projects/trusted-image-project-1",
+          "projects/trusted-image-project-2"
+        ]
+      }
+    }
   }
 }
