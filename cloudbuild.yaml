@@ -1,32 +1,44 @@
-steps:
-  # Build and publish the Packer image using Docker
-  - name: 'gcr.io/cloud-builders/docker'
-    args: [
-      'build', '-t', 'gcr.io/$PROJECT_ID/packer:${_PACKER_VERSION}',
-      '-t', 'gcr.io/$PROJECT_ID/packer',
-      '--build-arg', 'PACKER_VERSION=${_PACKER_VERSION}',
-      '--build-arg', 'PACKER_VERSION_SHA256SUM=${_PACKER_VERSION_SHA256SUM}',
-      '.'
-    ]
-
-  # Use Packer to initialize and build the golden image
-  - name: 'gcr.io/$PROJECT_ID/packer'
-    args:
-    - init
-    - .
-  
-  - name: 'gcr.io/$PROJECT_ID/packer'
-    args:
-    - build
-    - .
-
-substitutions:
-  _PACKER_VERSION: 1.9.1
-  _PACKER_VERSION_SHA256SUM: 793ed62255b9e572eda0c77d2a770f5fde501314b7598320786f1e51feb260d6
-
-images:
-  - 'gcr.io/$PROJECT_ID/packer:latest'
-  - 'gcr.io/$PROJECT_ID/packer:${_PACKER_VERSION}'
-
-tags: ['cloud-builders-community']
-
+build_config = {
+    'source': {
+        'storage_source': {
+            'bucket': 'codebuild_bucket',  # Update with your bucket name
+            'object': 'codebuild.zip',    # Path to the .zip file
+        }
+    },
+    'steps': [
+        # Step 1: Run your Packer Bash Script
+        {
+            'name': 'gcr.io/google.com/cloudsdktool/cloud-sdk',
+            'id': 'run-packer',
+            'entrypoint': 'bash',
+            'args': [
+                '-c',
+                'chmod +x execute_packer.sh && bash execute_packer.sh'
+            ],
+            'env': [
+                f'OS_TYPE={image.get("os_type")}',
+                f'IMAGE_FAMILY={image_name}',
+                f'SOURCE_IMAGE_FAMILY={image.get("source_image_family")}',
+                f'SOURCE_IMAGE_PROJECT={image.get("source_image_project")}',
+                f'SSH_USERNAME={image.get("ssh_username", "default_user")}',
+                f'OS_ARCH={image.get("architecture", "x86")}',
+                f'DATE_CREATED={datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S")}',
+                f'PROJECT_ID={project_id}',
+                f'NETWORK={network_id}',
+            ]
+        },
+        # Step 2: Notify on Failure via SNS
+        {
+            'name': 'python:3.9',
+            'id': 'send-failure-notification',
+            'entrypoint': 'python3',
+            'args': [
+                'email_notification.py',
+                'Cloud Build Failure',
+                'Cloud Build or Packer script failed. Check logs for details.'
+            ],
+            'status': 'FAILURE'
+        }
+    ],
+    'timeout': '1200s',  # Set an appropriate timeout
+}
