@@ -12,20 +12,9 @@ packer {
   }
 }
 
-variable "namespace" {
-  type    = string
-  default = env("namespace")
-}
-
-variable "source_image_family" {
-  type    = string
-  default = env("SOURCE_IMAGE_FAMILY")
-}
 
 locals {
-  rand_src      = uuidv4()
-  namespace     = "dev"
-  winrm_password = "${upper(substr(local.rand_src, 0, 6))}#!${lower(substr(local.rand_src, 24, 6))}"
+  rand_src = uuidv4()
   gcp_labels = {
     "OSDistribution" = "${var.image_family}"
     "Contact"        = "HCC_CDTK@ds.uhc.com"
@@ -40,12 +29,21 @@ locals {
 
 variable "image_family" {
   type    = string
-  default = env("image_family")
+  default = env("IMAGE_FAMILY")
 }
 
-variable "image_project" {
+variable "namespace" {
   type    = string
-  default = env("IMAGE_PROJECT")
+  default = env("namespace")
+}
+variable "os_type" {
+  type    = string
+  default = env("OS_TYPE")
+}
+
+variable "source_image_family" {
+  type    = string
+  default = env("SOURCE_IMAGE_FAMILY")
 }
 
 variable "project_id" {
@@ -58,11 +56,6 @@ variable "subnet" {
   default = env("SUBNET")
 }
 
-variable "region" {
-  type    = string
-  default = "us-east1"
-}
-
 variable "date_created" {
   type    = string
   default = env("DATE_CREATED")
@@ -73,9 +66,19 @@ variable "zone" {
   default = "us-east1-b"
 }
 
+variable "gim_family" {
+  type    = string
+  default = env("GIM_FAMILY")
+}
+
 variable "os_arch" {
   type    = string
   default = env("OS_ARCH")
+}
+
+variable "kms_key" {
+  type    = string
+  default = env("kms_key")
 }
 
 build {
@@ -83,85 +86,81 @@ build {
     "source.googlecompute.gcp-ami"
   ]
 
+  provisioner "file" {
+    source = "certs"
+    destination = "C:/Windows/system32"
+  }
+
   provisioner "powershell" {
-    script = "configure_winrm_and_cert.ps1"  # Combined PowerShell tasks for WinRM and certificates
+    script = "Windows_import_certs.ps1"
     environment_vars = [
       "image_family=${var.image_family}"
     ]
   }
 
-  provisioner "windows-restart" {
-    restart_check_command = "powershell -command \"& {Write-Output 'restarted.'}\""
-  }
-
   provisioner "file" {
-    source      = "certs"
-    destination = "C:/Windows/system32"
+    source = "/tmp/UHG_Cloud_Windows_Server-snowagent-7.0.3-x64.msi"
+    destination = "C:/Users/packer_user/UHG_Cloud_Windows_Server-snowagent-7.0.3-x64.msi"
   }
-
-  provisioner "ansible" {
-    max_retries    = 3
-    playbook_file  = "./ansible/playbook_win_aws.yml"
-    user           = "Ansible"  # Keep the username for WinRM configuration
-    use_proxy      = false
-    extra_arguments = [
-      "--extra-vars", "@extra_vars.yml"
+ 
+  provisioner "powershell" {
+    inline = [
+      "echo installing-snowagent",
+      "dir",
+      "msiexec /i UHG_Cloud_Windows_Server-snowagent-7.0.3-x64.msi /quiet"
     ]
   }
+  
+  provisioner "ansible" {
+    max_retries   = 3
+    playbook_file = "./ansible/playbook_win_gcp.yml"
+    user          = "packer_user"
+    use_proxy     = false
+    extra_arguments = [
+      "--tags", "${var.image_family}",
+      "--extra-vars", "csp=gcp",
+      "--extra-vars", "os_type=${var.os_type}",
+      "--extra-vars", "image_family=${var.image_family}",
+      "--extra-vars", "architecture=${var.os_arch}",
+      "--extra-vars", "gcp_build_instance_id=${build.ID}",
+      "--extra-vars", "namespace=${var.namespace}",
+      "--extra-vars", "image_name=${var.namespace}${var.gim_family}-${var.date_created}",
+      "--extra-vars", "date_created=${var.date_created}",
+      "--extra-vars", "ansible_winrm_server_cert_validation=ignore"
+    ]
+  }
+
+  provisioner "powershell" {
+    inline = ["GCESysprep -NoShutdown"]
+    skip_clean = true
+  }
+ 
 }
 
 source "googlecompute" "gcp-ami" {
   project_id      = var.project_id
   zone            = var.zone
   machine_type    = "n1-standard-1"
-  image_name      = "${local.namespace}-optum-${var.source_image_family}"
+  image_name      = "${var.namespace}${var.gim_family}-${var.date_created}"
   source_image_family    = var.source_image_family
-  disk_size       = 50
+  image_family        = var.gim_family
+  image_labels        = {image_type: "golden-image"}
+  disk_size       = 100
   subnetwork      = var.subnet
-  tags            = ["packer-winrm"]
+  omit_external_ip    = true
+  use_internal_ip     = true
+  use_iap      = true
+  tags            = ["packer-build"]
   communicator    = "winrm"
-  winrm_username  = "Ansible"
+  winrm_username  = "packer_user"
   winrm_insecure  = true
   winrm_use_ssl   = true
-
-  metadata = {
-    "windows-startup-script-cmd" = <<-EOF
-      # PowerShell script for configuring WinRM and SSL certificates
-      
-      # Create user and set password if not already created
-      if (-not (Get-LocalUser "Ansible")) {
-        net user Ansible ${local.winrm_password} /add
-        net localgroup Administrators Ansible /add
-      }
-
-      # Disable password expiration
-      wmic useraccount where "name='Ansible'" set PasswordExpires=FALSE
-
-      # Set Execution Policy
-      Set-ExecutionPolicy Unrestricted -Scope LocalMachine -Force -ErrorAction Ignore
-
-      # Setup SSL certificate for WinRM
-      $CurrentHostname = hostname
-      $Cert = New-SelfSignedCertificate -CertstoreLocation Cert:\LocalMachine\My -DnsName "$CurrentHostname"
-      New-Item -Path WSMan:\LocalHost\Listener -Transport HTTPS -Address * -CertificateThumbprint $Cert.Thumbprint -Force
-
-      # Setup WinRM configuration
-      winrm quickconfig -q
-      winrm set "winrm/config/service" '@{AllowUnencrypted="true"}'
-      winrm set "winrm/config/client" '@{AllowUnencrypted="true"}'
-      winrm set "winrm/config/service/auth" '@{Basic="true"}'
-      winrm set "winrm/config/client/auth" '@{Basic="true"}'
-      winrm set "winrm/config/service/auth" '@{CredSSP="true"}'
-      winrm set "winrm/config/listener?Address=*+Transport=HTTPS" "@{Port=`"443`";Hostname=`"$CurrentHostname`";CertificateThumbprint=`"$($Cert.Thumbprint)`"}"
-
-      # Open necessary ports in Windows Firewall
-      netsh advfirewall firewall set rule group="remote administration" new enable=yes
-      netsh firewall add portopening TCP 443 "Port 443"
-
-      # Restart WinRM service to apply settings
-      net stop winrm
-      sc config winrm start= auto
-      net start winrm
-    EOF
+  image_encryption_key {
+    kmsKeyName = var.kms_key
   }
+  metadata = {    
+    sysprep-specialize-script-cmd = "winrm quickconfig -quiet & net user /add packer_user & net localgroup administrators packer_user /add & winrm set winrm/config/service/auth @{Basic=\"true\"}"  
+  }
+
 }
+
