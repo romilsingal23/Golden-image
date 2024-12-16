@@ -11,10 +11,23 @@ logger = logging.getLogger()
 logging.basicConfig(level=logging.INFO)
 
 # Environment variables with default values
-project_id = os.getenv('PROJECT_ID', "zjmqcnnb-gf42-i38m-a28a-y3gmil")  # Google Cloud Project ID
-network_id = os.getenv('NETWORK', "gcp-build-network")  # Google Cloud Network ID
-subnet_id = os.getenv('SUBNET', "gcp-build-subnet")  # Google Cloud Subnet ID
-supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET', "poc-supported-images")  # GCS bucket name for JSON file
+project_id = os.getenv('PROJECT_ID')  # Google Cloud Project ID
+network_id = os.getenv('NETWORK')  # Cloud Network ID
+subnet_id = os.getenv('SUBNET')  # Google Cloud Subnet ID
+supported_images_bucket = os.getenv('SUPPORTED_IMAGES_BUCKET')  # GCS bucket name for JSON file
+codebuild_bucket = os.getenv('CODEBUILD_BUCKET')  
+aws_access_key=os.getenv('aws_access_key')
+aws_secret_key=os.getenv('aws_secret_key')
+prisma_username = os.getenv('prisma_username',"prisma-username")
+prisma_password = os.getenv('prisma_password',"prisma-password")
+path_to_console = os.getenv('path_to_console')
+prisma_base_url = os.getenv('prisma_base_url')
+dynamodb_table=os.getenv('dynamodb_table','smadu4-golden-images-metadata')
+service_account_id = os.getenv('service_account_id', 'service-account-id')
+namespace   = os.getenv('namespace','namespace') 
+kms_key = os.getenv('kms_key')
+TOPIC_NAME = os.getenv('TOPIC_NAME')
+
 
 # Initialize Google Cloud clients
 storage_client = storage.Client()
@@ -26,14 +39,15 @@ def trigger_cloud_build(client, image_name, image):
     try:
         logger.info(f"Network VPC {network_id}")
         logger.info(f"Project ID {os.getenv('PROJECT_ID')}")
-        
+        logger.info(f"codebuild_bucket {codebuild_bucket}")
+        gim_family = namespace+image.get("gim_family")
         start_time = datetime.now(timezone.utc)
 
         # Define the build configuration
         build_config = {
             'source': {
                 'storage_source': {
-                    'bucket': 'gcp-build-bucket',
+                    'bucket': f'{codebuild_bucket}',
                     'object': 'codebuild.zip'  # Path to the .zip file in the bucket
                 }
             },
@@ -45,32 +59,44 @@ def trigger_cloud_build(client, image_name, image):
                     'entrypoint': 'bash',
                     'args': [
                         '-c',
-                        'chmod +x execute_packer.sh && bash execute_packer.sh'
+                        'chmod +x execute_packer.sh && bash execute_packer.sh' \
+                        '|| python3 email_notification.py "Cloud Build Failure for: " "Cloud Build or storemetadata script failed. Check logs for details."'
                     ],
                     'env': [
                         f'OS_TYPE={image.get("os_type")}',
                         f'IMAGE_FAMILY={image_name}',
                         f'SOURCE_IMAGE_FAMILY={image.get("source_image_family")}',
-                        f'IMAGE_PROJECT={image.get("image_project")}',
+                        f'SOURCE_IMAGE_PROJECT={image.get("image_project")}',
                         f'SSH_USERNAME={image.get("ssh_username", "default_user")}',
                         f'OS_ARCH={image.get("architecture", "x86")}',
                         f'DATE_CREATED={datetime.strftime(start_time, "%Y-%m-%d-%H%M%S")}',
                         f'PROJECT_ID={project_id}',
                         f'NETWORK={network_id}',
-                        f'SUBNET={subnet_id}'
+                        f'SUBNET={subnet_id}',
+                        f'CODEBUILD_BUCKET={codebuild_bucket}',
+                        f'GIM_FAMILY={gim_family}',
+                        f'aws_access_key={aws_access_key}',
+                        f'aws_secret_key={aws_secret_key}',
+                        f'path_to_console={path_to_console}',
+                        f'prisma_base_url={prisma_base_url}',
+                        f'prisma_username={prisma_username}',
+                        f'prisma_password={prisma_password}',
+                        f'dynamodb_table={dynamodb_table}',
+                        f'service_account_id={service_account_id}',
+                        f'kms_key={kms_key}',
+                        f'TOPIC_NAME={TOPIC_NAME}',
+                        f'namespace={namespace}'
                     ]
                 }
             ],
-            'timeout': timedelta(seconds=7200),
+            'timeout': '7200s',
+            'service_account': service_account_id,
+            'options': {'logging': 'CLOUD_LOGGING_ONLY'},            
         }
 
-        logger.info("Start Test Build")
         logger.info(f"Start Test Build {image.get('image_family')}")
-        
-        
 
         # Trigger the build
-        logger.info(f"Build config {build_config}")
         response = client.create_build(project_id= project_id, build= build_config)
         
         logger.info(f"Build triggered for {image_name} with build ID: {response} ")
@@ -80,7 +106,6 @@ def trigger_cloud_build(client, image_name, image):
         logger.error(f"Failed to trigger build for {image_name}. Error: {str(e)}")
         logger.error("".join(traceback.format_exc()))  # Log full traceback
         raise
-
 
 def handle():
     """Process the supported_images.json file and trigger builds."""
@@ -132,16 +157,3 @@ def main(request=None):
             500,
             {"Content-Type": "application/json"},
         )
-
-# Test block for local execution
-if __name__ == "__main__":
-    os.environ["PROJECT_ID"] = "zjmqcnnb-gf42-i38m-a28a-y3gmil"  # Replace with your actual Project ID
-    os.environ["SUPPORTED_IMAGES_BUCKET"] = "poc-supported-images"  # Replace with your bucket name
-
-    try:
-        logger.info("Running main.py locally...")
-        response = handle()
-        logger.info(f"Response: {json.dumps(response, indent=4)}")
-    except Exception as e:
-        logger.error(f"An error occurred during local execution: {str(e)}")
-        logger.error("".join(traceback.format_exc()))  # Log full traceback for local errors
