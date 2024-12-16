@@ -1,0 +1,89 @@
+- hosts: all
+  gather_timeout: 60
+  gather_facts: yes
+  vars:
+    ansible_ssh_timeout: 100
+
+- hosts: all
+  gather_facts: no
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - common
+
+- hosts: all
+  gather_facts: no
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - ubuntu20-cis
+  tags:
+    - Ubuntu_20
+    - ARM_Ubuntu_20
+
+- hosts: all
+  gather_facts: no
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - ubuntu22-cis
+  tags:
+    - Ubuntu_22
+    - ARM_Ubuntu_22
+
+
+- hosts: all
+  gather_facts: no
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - rhel9-cis
+  tags:
+    - RHEL_9
+    - ARM_RHEL_9
+
+- hosts: all
+  gather_facts: no
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - rhel7-cis
+  tags:
+    - Amazon_Linux_2
+    - ARM_Amazon_Linux_2
+    - ECS_Optimized
+    - ARM_ECS_Optimized
+    - EKS_Optimized_128
+    - EKS_Optimized_129
+    - EKS_Optimized_130
+    - ARM_EKS_Optimized_128
+    - ARM_EKS_Optimized_129
+    - ARM_EKS_Optimized_130
+    
+
+- hosts: all
+  gather_facts: no
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - al2023-cis
+  tags:
+    - AmazonLinux_2023
+    - ARM_AmazonLinux_2023
+    - EBS_AmazonLinux_2023
+    - ECS_Optimized_2023
+    - ARM_ECS_Optimized_2023
+
+- hosts: all
+  gather_facts: no
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - inspector
