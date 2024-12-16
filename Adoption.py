@@ -5,9 +5,11 @@ import logging
 import requests
 import pandas as pd
 from loguru import logger
+from datetime import datetime
 from google.cloud import storage
 from google.cloud import compute_v1
 from google.cloud import secretmanager
+from google.cloud import resourcemanager_v3
 
 TENANT_ID = os.getenv('TENANT_ID')
 X_API_KEY_VALUE = os.getenv('X_API_KEY')
@@ -18,7 +20,28 @@ CLIENT_SECRET_NAME = os.getenv('CLIENT_SECRET_NAME')
 GRAPH_API_SCOPE_URL = os.getenv('GRAPH_API_SCOPE_URL')
 GRAPH_API_USERS_URL = os.getenv('GRAPH_API_USERS_URL')
 project_id = os.getenv('PROJECT_ID')
+organization_id = os.getenv('ORGANIZATION_ID', "531591688136")
 bucket_name = os.getenv('BUCKET_NAME') 
+
+def list_projects_in_organization(org_id):
+    projects_client = resourcemanager_v3.ProjectsClient()
+    folders_client = resourcemanager_v3.FoldersClient()
+    folders = folders_client.search_folders(request={"query": f"parent=organizations/{org_id}"})
+    all_projects = []
+    for folder in folders:
+        all_projects.extend(fetch_projects_in_folder(folder.name, folders_client, projects_client))
+    logger.info(f"len projects: {len(all_projects)}")
+    return all_projects
+
+def fetch_projects_in_folder(folder_id, folders_client, projects_client):
+    projects = []
+    for project in projects_client.list_projects(parent=folder_id):
+        if project.state.name == "ACTIVE":
+            projects.append(project.project_id)
+    subfolders = folders_client.list_folders(parent=folder_id)
+    for subfolder in subfolders:
+        projects.extend(fetch_projects_in_folder(subfolder.name, folders_client, projects_client))
+    return projects
 
 def call_api_with_batch_get(account_ids, x_api_key, cat_table_url):
     exceptions = []
@@ -66,12 +89,11 @@ def get_email_ids_from_employeeIds(employee_ids):
                 'client_secret': responce_client_secret,
                 'scope': GRAPH_API_SCOPE_URL
             }
-            authority_url
             headers = {'Content-type': 'application/x-www-form-urlencoded'}
             # Get access token
             response = requests.post(authority_url, headers=headers, data=request_data)
             filtered_response = {}
- 
+                    
             if employee_ids and len(employee_ids) > 0 and response.status_code == 200:
                 employeeid_chunks = [employee_ids[x:x+15] for x in range(0, len(employee_ids), 15)]
                 for empidschunk in employeeid_chunks:
@@ -101,20 +123,17 @@ def get_email_ids_from_employeeIds(employee_ids):
             exceptions.append(e)
             return exceptions
 
-def fetch_instance_data(project_id):
+def fetch_instance_data(org_project_id):   
     instance_client = compute_v1.InstancesClient()
     disk_client = compute_v1.DisksClient()
     image_client = compute_v1.ImagesClient()
     results = []
     account_ids = []
 
-    # List all instances in the project
-    # request = compute_v1.AggregatedListInstancesRequest(project=project_id)
-    # zones = instance_client.aggregated_list(request=request)
-    request = compute_v1.AggregatedListInstancesRequest(project=project_id, max_results=300)
+    request = compute_v1.AggregatedListInstancesRequest(project=org_project_id, max_results=300)
     while True:
-        zones = instance_client.aggregated_list(request=request) 
-        for zone, instances_scoped_list in zones:
+        all_instances = instance_client.aggregated_list(request=request) 
+        for zone, instances_scoped_list in all_instances:
             if instances_scoped_list.instances:
                 for instance in instances_scoped_list.instances:
                     instance_name = instance.name
@@ -130,11 +149,11 @@ def fetch_instance_data(project_id):
                         
                         # Extract disk name and zone
                         disk_name = disk_source.split("/")[-1]
-                        disk_zone = disk_source.split("/zones/")[1].split("/")[0]
+                        disk_zone = disk_source.split("/all_instances/")[1].split("/")[0]
                         
                         # Fetch the source image URL from the disk
                         try:
-                            disk_info = disk_client.get(project=project_id, zone=disk_zone, disk=disk_name)
+                            disk_info = disk_client.get(project=org_project_id, zone=disk_zone, disk=disk_name)
                             source_image_url = disk_info.source_image
                         except Exception as e:
                             logger.info(f"Error fetching disk info for {disk_name}: {e}")
@@ -165,10 +184,10 @@ def fetch_instance_data(project_id):
                             if deprecation_status: 
                                 deprecation_status = deprecation_status.state
                             
-                            account_ids.append(project_id)
+                            account_ids.append(org_project_id)
                             # Store the result
                             results.append({
-                                "Project": project_id,
+                                "Project": org_project_id,
                                 "VM Name": instance_name,
                                 "VM Creation Time": vm_creation_time,
                                 "VM Zone": vm_zone,
@@ -179,13 +198,13 @@ def fetch_instance_data(project_id):
                                 "Deprecation Status": deprecation_status,
                             })
                         else:
-                            logger.info(f"No source image found for disk {disk_name} in project {project_id}")
+                            logger.info(f"No source image found for disk {disk_name} in project {org_project_id}")
     
-        if zones.next_page_token:
-            request.page_token = zones.next_page_token
+        if all_instances.next_page_token:
+            request.page_token = all_instances.next_page_token
         else:
             break
- 
+
     unique_account_ids = (list(set(account_ids)))
     X_API_KEY = get_secret_gcp(X_API_KEY_VALUE)
     result_json_array = call_api_with_batch_get(unique_account_ids,X_API_KEY,CAT_TABLE_URL)
@@ -215,12 +234,11 @@ def fetch_instance_data(project_id):
         logging.error('Error in getting User Email \'%s\':', e)
     return results
 
-def upload_to_gcs(file_path, bucket_name, destination_blob_name, buffer):
+def upload_to_gcs(bucket_name, destination_blob_name, buffer):
     try:
         client = storage.Client()
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(destination_blob_name)
-        # blob.upload_from_filename(file_path)
         blob.upload_from_file(buffer, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         logger.info(f"File uploaded to gs://{bucket_name}/{destination_blob_name}")
     except Exception as e:
@@ -228,31 +246,43 @@ def upload_to_gcs(file_path, bucket_name, destination_blob_name, buffer):
 
 def main(request=None):
     try:
-        # List of project IDs
-        
-        projects = [project_id]  # Replace with your actual project IDs
-        output_file = "vm_image_labels.xlsx"
-
+        projects = list_projects_in_organization(organization_id)
+        success_list, failure_list = [], []
         all_results = []
 
-        # Process each project
-        for project in projects:
-            logger.info(f"Processing Project: {project}")
-            project_data = fetch_instance_data(project)
-            all_results.extend(project_data)
+        for org_project_id in projects:
+            try:
+                logger.info(f"Processing Project: {org_project_id}")
+                project_data = fetch_instance_data(org_project_id)
+                all_results.extend(project_data)
+                success_list.append(org_project_id)
+            except Exception as e:
+                failure_list.append(org_project_id)
+                # Log the error and continue to the next project
+                logger.error(f"Error processing project {org_project_id}: {e}")
+                continue
+        logger.info(f"Success Project List: {success_list}")
+        logger.info(f"Failure Project List: {failure_list}")
+        logger.info(f"Success Project Count: {len(success_list)}")
+        logger.info(f"Failure Project Count: {len(failure_list)}")
 
-        # Save results to Excel
-        df = pd.DataFrame(all_results)
-        buffer = io.BytesIO()
-        df.to_excel(buffer, index=False)
-        buffer.seek(0)
-        
+        # Convert results to a DataFrame and save to Excel
+        if all_results:
+            df = pd.DataFrame(all_results)
+            buffer = io.BytesIO()
+            df.to_excel(buffer, index=False)
+            buffer.seek(0)
 
-        # Upload the file to GCS
-        upload_to_gcs(output_file, bucket_name, "vm_image_labels.xlsx", buffer)
-        return {"message": "File uploaded successfully!"}, 200
+            cur_date = datetime.now().strftime("%Y-%m-%d")
+            upload_to_gcs(bucket_name, f"adoption-report-{cur_date}.xlsx", buffer)
+            logger.info("File uploaded successfully!")
+            return {"message": "File uploaded successfully!"}, 200
+        else:
+            logger.warning("No results to process. Exiting.")
+            return {"message": "No data processed"}, 204
+
     except Exception as e:
-        logging.error("Error in main function: %s", e)
+        logger.error(f"Error in main function: {e}")
         return {"error": str(e)}, 500
 
 if __name__ == "__main__":
