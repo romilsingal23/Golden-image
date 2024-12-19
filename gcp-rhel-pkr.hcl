@@ -4,6 +4,12 @@ packer {
       version = ">= 1.0.0"
       source  = "github.com/hashicorp/googlecompute"
     }
+
+    ansible = {
+      version = "~> 1"
+      source = "github.com/hashicorp/ansible"
+    }
+
   }
 }
 
@@ -18,22 +24,19 @@ locals {
     "TaggingVersion" = "v1.0.1"
     "ImageType"      = "ApprovedOptumGoldenImage"
   }
-  build_tags = merge({ "Name" = "${var.namespace_dash}builder-${var.image_family}" }, local.image_tags)
 }
 
+variable "source_image_family" {
+  type    = string
+  default = env("SOURCE_IMAGE_FAMILY")
+}
 variable "namespace" {
   type    = string
   default = env("namespace")
 }
-
-variable "namespace_dash" {
-  type    = string
-  default = env("namespacedash")
-}
-
 variable "image_family" {
   type    = string
-  default = env("image_family")
+  default = env("IMAGE_FAMILY")
 }
 
 variable "os_owner" {
@@ -43,47 +46,53 @@ variable "os_owner" {
 
 variable "os_name" {
   type    = string
-  default = env("os_name")
+  default = env("OS_NAME")
 }
 
 variable "os_type" {
   type    = string
-  default = env("os_type")
+  default = env("OS_TYPE")
 }
 
 variable "os_arch" {
   type    = string
-  default = env("os_arch")
+  default = env("OS_ARCH")
 }
 
-variable "ssh_user" {
+variable "ssh_username" {
   type    = string
-  default = env("ssh_user")
+  default = env("SSH_USERNAME")
 }
 
 variable "network" {
   type    = string
-  default = env("network")
+  default = env("NETWORK")
+}
+
+
+variable "gim_family" {
+  type    = string
+  default = env("GIM_FAMILY")
 }
 
 variable "subnet" {
   type    = string
-  default = env("subnet")
+  default = env("SUBNET")
+}
+
+variable "project_id" {
+  type    = string
+  default = env("PROJECT_ID")
+}
+
+variable "date_created" {
+  type    = string
+  default = env("DATE_CREATED")
 }
 
 variable "kms_key" {
   type    = string
   default = env("kms_key")
-}
-
-variable "project_id" {
-  type    = string
-  default = env("project_id")
-}
-
-variable "date_created" {
-  type    = string
-  default = env("date_created")
 }
 
 locals {
@@ -92,17 +101,23 @@ locals {
 }
 
 build {
-  sources = [
-    "source.googlecompute.golden_image_build_specs"
-  ]
+  sources = ["source.googlecompute.golden_image_build_specs"]
 
   provisioner "file" {
     source = "certs"
     destination = "/tmp/"
   }
 
+  provisioner "shell" {
+    expect_disconnect = true
+    script            = "linux_certs_upload.sh"
+    environment_vars = [
+      "image_family=${var.image_family}"
+    ]
+  }
+
   provisioner "file" {
-    sources = ["/tmp/UHG_Cloud_Linux_Server-snowagent-7.0.1-x64.deb", "/tmp/UHG_Cloud_Linux_Server-snowagent-7.0.1-x64.rpm"]
+    sources = ["/tmp/UHG_Cloud_Linux_Server-snowagent-7.0.1-x64.rpm"]
     destination = "/tmp/"
   }
 
@@ -114,86 +129,50 @@ build {
     execute_command   = "{{.Vars}} bash '{{.Path}}'"
   }
 
-  provisioner "shell" {
-    expect_disconnect = true
-    script            = "update.sh"
-    environment_vars = [
-      "image_family=${var.image_family}"
-    ]
-  }
-
-  provisioner "shell" {
-    expect_disconnect = true
-    script            = "linux_certs_upload.sh"
-    environment_vars = [
-      "image_family=${var.image_family}"
-    ]
-  }
-
   provisioner "ansible" {
     max_retries   = 3
     playbook_file = "./ansible/playbook.yml"
-    user          = "${var.ssh_user}"
-    use_proxy     = local.use_proxy_flag
+    user          = "${var.ssh_username}"
+    use_proxy           = local.use_proxy_flag
     extra_arguments = [
       "--tags", "${var.image_family}",
       "--extra-vars", "csp=gcp",
       "--extra-vars", "architecture=${var.os_arch}",
       "--extra-vars", "instance_type=${local.instance_type}",
-      "--extra-vars", "namespace=${var.namespace}",
       "--extra-vars", "image_family=${var.image_family}",
-      "--extra-vars", "architecture=${var.os_arch}",
-      "--extra-vars", "gcp_build_instance_id=${build.ID}",
+      "--extra-vars", "namespace=${var.namespace}",
       "--extra-vars", "os_type=${var.os_type}",
-      "--extra-vars", "gcp_image_name=${var.namespace_dash}optum/${var.image_family}_${var.date_created}",
+      "--extra-vars", "image_name=${var.namespace}${var.gim_family}-${var.date_created}",
       "--extra-vars", "date_created=${var.date_created}"
     ]
   }
 
   provisioner "shell" {
     expect_disconnect = true
-    script            = "gcp_cli.sh"
-    environment_vars = [
-      "image_family=${var.image_family}"
-    ]
+    script            = "update.sh"
   }
 
-  provisioner "shell" {
-    expect_disconnect = true
-    inline = [
-      "if [[ $image_family != 'RHEL_9' && $image_family != 'ARM_RHEL_9' ]]; then",
-      " echo rebooting ", 
-      "sudo /sbin/reboot",
-      "fi"
-    ] 
-    environment_vars = [
-      "image_family=${var.image_family}"
-    ]
-    pause_after = "5m"
-  }
 }
 
 source "googlecompute" "golden_image_build_specs" {
-  project_id          = "${var.project_id}"
-  source_image_family = "${var.os_name}"
-  source_image_project = "${var.os_owner}"
+  project_id          = var.project_id
+  source_image_family = var.source_image_family # It always returns its latest image that is not deprecated
+  image_name          = "${var.namespace}${var.gim_family}-${var.date_created}"
+  image_family        = var.gim_family
+  image_labels        = {image_type: "golden-image"}
   machine_type        = local.instance_type
-  zone                = "us-central1-a"
-  network             = "${var.network}"
-  subnetwork          = "${var.subnet}"
-  tags                = local.build_tags
-  service_account {
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-  }
-  disk {
-    image  = "${var.os_name}"
-    type   = "pd-ssd"
-    size   = 50
-    labels = local.image_tags
-    encrypt = true
-    kms_key_name = "${var.kms_key}"
+  omit_external_ip    = true
+  use_internal_ip     = true
+  use_iap      = true
+  zone                = "us-east1-b"
+  network             = var.network
+  subnetwork          = var.subnet
+  ssh_username        = var.ssh_username
+  tags               = ["packer-build"]
+  image_encryption_key {
+    kmsKeyName = var.kms_key
   }
   metadata = {
-    ssh-keys = "packer:${var.ssh_user}"
+    ssh-keys = "packer:${var.ssh_username}"
   }
 }
