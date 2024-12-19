@@ -1,15 +1,24 @@
-{
+{ 
   "gcp": {
     "RHEL_9": {
       "os_type": "Linux",
-      "image_family": "rhel-9",
+      "source_image_family": "rhel-9",
+      "gim_family": "gim-rhel-9",
       "image_project": "rhel-cloud",
-      "image_name": "rhel-9-v20230926",
       "architecture": "x86_64",
-      "device_type": "persistent",
-      "root_volume": "/dev/sda1",
-      "ssh_user": "cloud-user",
-      "virtualization_type": "hvm"
+      "device_type": "local-ssd",
+      "ssh_username": "cloud-user",
+      "disk_size": "50"
+    },
+
+    "Windows_2022": {
+      "os_type": "Windows",
+      "source_image_family": "windows-2022",
+      "gim_family": "gim-windows-2022",
+      "image_project": "windows-cloud",
+      "architecture": "x86_64",
+      "device_type": "local-ssd",
+      "disk_size": "100"
     }
   }
 }
