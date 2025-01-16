@@ -1,39 +1,43 @@
-name: Run Packer Monthly
+name: CI
 
+# Controls when the workflow will run
 on:
   schedule:
     - cron: '0 0 1 * *'  # Runs at 12:00 AM UTC on the 1st of every month
-  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      # Checkout the repository
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Set up Packer (Packer is automatically installed)
-      - name: Set up Packer
-        uses: hashicorp/setup-packer@v1
-
-      # Run Packer for Ubuntu
-      - name: Run Packer for Ubuntu
-        run: |
-          packer build packer-ubuntu.hcl
-
-      # Run Packer for CentOS
-      - name: Run Packer for CentOS
-        run: |
-          packer build packer-sql.hcl
-
-      # Run Packer for Windows
-      - name: Run Packer for Windows
-        run: |
-          packer build packer-windows.hcl
-
-      # Run Packer for RHEL
+      - name: Google Authentication 
+        uses: 'google-github-actions/auth@v2'
+        with:
+         project_id: 'prj-ospacker-useast-dev-23295'
+	 credentials_json: 
+    
+      - name: Setup HashiCorp Packer
+        uses: hashicorp/setup-packer@v3.0.0
+	
       - name: Run Packer for RHEL
         run: |
-          packer build packer-rhel.hcl
+          packer build gcp-rhel.pkr.hcl      
+
+      - name: Run Packer for Ubuntu
+        run: |
+          packer build gcp-ubuntu.pkr.hcl
+	  
+      - name: Run Packer for Windows
+        run: |
+          packer build gcp-win.pkr.hcl
+
+      - name: Run Packer for SQL
+        run: |
+          packer build gcp-sql.pkr.hcl    
