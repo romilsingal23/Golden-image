@@ -1,8 +1,8 @@
-name: OS Packer Pipeline 
+name: CI
 
 on:
   schedule:
-    - cron: '0 0 1 * *'  # Runs at 12:00 AM UTC on the 1st of every month
+    - cron: '0 0 1 * *'
   push:
     branches: [ "main" ]
   pull_request:
@@ -10,62 +10,55 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-rhel:
+  setup:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Google Authentication 
-        uses: 'google-github-actions/auth@v2'
+
+      - name: Google Authentication
+        id: auth
+        uses: google-github-actions/auth@v2
         with:
           project_id: 'prj-ospacker-useast-dev-23295'
           credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+  build-rhel:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
+
       - name: Run Packer for RHEL
         run: packer build gcp-rhel.pkr.hcl
 
   build-ubuntu:
+    needs: setup
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Google Authentication 
-        uses: 'google-github-actions/auth@v2'
-        with:
-          project_id: 'prj-ospacker-useast-dev-23295'
-          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
+
       - name: Run Packer for Ubuntu
         run: packer build gcp-ubuntu.pkr.hcl
 
   build-windows:
+    needs: setup
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Google Authentication 
-        uses: 'google-github-actions/auth@v2'
-        with:
-          project_id: 'prj-ospacker-useast-dev-23295'
-          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
+
       - name: Run Packer for Windows
         run: packer build gcp-win.pkr.hcl
 
   build-sql:
+    needs: setup
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Google Authentication 
-        uses: 'google-github-actions/auth@v2'
-        with:
-          project_id: 'prj-ospacker-useast-dev-23295'
-          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
+
       - name: Run Packer for SQL
         run: packer build gcp-sql.pkr.hcl
