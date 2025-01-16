@@ -1,6 +1,5 @@
 name: CI
 
-# Controls when the workflow will run
 on:
   schedule:
     - cron: '0 0 1 * *'  # Runs at 12:00 AM UTC on the 1st of every month
@@ -20,8 +19,8 @@ jobs:
       - name: Google Authentication 
         uses: 'google-github-actions/auth@v2'
         with:
-         project_id: 'prj-ospacker-useast-dev-23295'
-	 credentials_json: 
+          project_id: 'prj-ospacker-useast-dev-23295'
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
     
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
@@ -40,4 +39,4 @@ jobs:
 
       - name: Run Packer for SQL
         run: |
-          packer build gcp-sql.pkr.hcl    
+          packer build gcp-sql.pkr.hcl
