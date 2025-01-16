@@ -1,4 +1,4 @@
-name: CI
+name: OS Packer Pipeline 
 
 on:
   schedule:
@@ -10,33 +10,62 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-rhel:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Google Authentication 
         uses: 'google-github-actions/auth@v2'
         with:
           project_id: 'prj-ospacker-useast-dev-23295'
           credentials_json: ${{ secrets.GCP_CREDENTIALS }}
-    
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
-	
       - name: Run Packer for RHEL
-        run: |
-          packer build gcp-rhel.pkr.hcl      
+        run: packer build gcp-rhel.pkr.hcl
 
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Google Authentication 
+        uses: 'google-github-actions/auth@v2'
+        with:
+          project_id: 'prj-ospacker-useast-dev-23295'
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+      - name: Setup HashiCorp Packer
+        uses: hashicorp/setup-packer@v3.0.0
       - name: Run Packer for Ubuntu
-        run: |
-          packer build gcp-ubuntu.pkr.hcl
-	  
-      - name: Run Packer for Windows
-        run: |
-          packer build gcp-win.pkr.hcl
+        run: packer build gcp-ubuntu.pkr.hcl
 
+  build-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Google Authentication 
+        uses: 'google-github-actions/auth@v2'
+        with:
+          project_id: 'prj-ospacker-useast-dev-23295'
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+      - name: Setup HashiCorp Packer
+        uses: hashicorp/setup-packer@v3.0.0
+      - name: Run Packer for Windows
+        run: packer build gcp-win.pkr.hcl
+
+  build-sql:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Google Authentication 
+        uses: 'google-github-actions/auth@v2'
+        with:
+          project_id: 'prj-ospacker-useast-dev-23295'
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+      - name: Setup HashiCorp Packer
+        uses: hashicorp/setup-packer@v3.0.0
       - name: Run Packer for SQL
-        run: |
-          packer build gcp-sql.pkr.hcl
+        run: packer build gcp-sql.pkr.hcl
