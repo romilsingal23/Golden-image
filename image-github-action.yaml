@@ -1,4 +1,4 @@
-name: CI
+name: OS Packer Pipeline
 
 on:
   schedule:
