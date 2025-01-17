@@ -9,111 +9,27 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
-jobs:  
+jobs:
   build-rhel:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: 'write'
-      contents: 'read'
-    
+    uses: ./.github/workflows/common-setup.yml  # Reusable workflow
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Google Authentication
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          project_id: 'prj-ospacker-useast-dev-23295'
-          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
-          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
-
-      - name: Setup HashiCorp Packer
-        uses: hashicorp/setup-packer@v3.0.0
-
       - name: Run Packer for RHEL
-        run: packer init gcp-rhel.pkr.hcl
-
-      - name: Run Packer for RHEL
-        run: packer build gcp-rhel.pkr.hcl
+        run: packer build gcp-rhel.pkr.hcl  # Build the RHEL configuration
 
   build-ubuntu:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: 'write'
-      contents: 'read'
-      
+    uses: ./.github/workflows/common-setup.yml  # Reusable workflow
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Google Authentication
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          project_id: 'prj-ospacker-useast-dev-23295'
-          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
-          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
-
-      - name: Setup HashiCorp Packer
-        uses: hashicorp/setup-packer@v3.0.0
-
-      - name: Init Packer for Ubuntu
-        run: packer init gcp-ubuntu.pkr.hcl
-
       - name: Run Packer for Ubuntu
-        run: packer build gcp-ubuntu.pkr.hcl
+        run: packer build gcp-ubuntu.pkr.hcl  # Build the Ubuntu configuration
 
   build-windows:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: 'write'
-      contents: 'read'
-    
+    uses: ./.github/workflows/common-setup.yml  # Reusable workflow
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Google Authentication
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          project_id: 'prj-ospacker-useast-dev-23295'
-          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
-          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
-
-      - name: Setup HashiCorp Packer
-        uses: hashicorp/setup-packer@v3.0.0
-
-      - name: Init Packer for Windows
-        run: packer init gcp-win.pkr.hcl
-
       - name: Run Packer for Windows
-        run: packer build gcp-win.pkr.hcl
+        run: packer build gcp-win.pkr.hcl  # Build the Windows configuration
 
   build-sql:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: 'write'
-      contents: 'read'
-    
+    uses: ./.github/workflows/common-setup.yml  # Reusable workflow
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Google Authentication
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          project_id: 'prj-ospacker-useast-dev-23295'
-          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
-          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
-
-      - name: Setup HashiCorp Packer
-        uses: hashicorp/setup-packer@v3.0.0
-
-      - name: Init Packer for SQL
-        run: packer init gcp-sql.pkr.hcl
-
       - name: Run Packer for SQL
-        run: packer build gcp-sql.pkr.hcl
+        run: packer build gcp-sql.pkr.hcl  # Build the SQL configuration
