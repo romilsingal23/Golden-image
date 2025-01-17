@@ -9,9 +9,13 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
-jobs:
-  setup:
+jobs:  
+  build-rhel:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: 'write'
+      contents: 'read'
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -21,44 +25,95 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           project_id: 'prj-ospacker-useast-dev-23295'
-          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
 
-  build-rhel:
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
+
+      - name: Run Packer for RHEL
+        run: packer init gcp-rhel.pkr.hcl
 
       - name: Run Packer for RHEL
         run: packer build gcp-rhel.pkr.hcl
 
   build-ubuntu:
-    needs: setup
     runs-on: ubuntu-latest
+    permissions:
+      id-token: 'write'
+      contents: 'read'
+      
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Google Authentication
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: 'prj-ospacker-useast-dev-23295'
+          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
+
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
+
+      - name: Init Packer for Ubuntu
+        run: packer init gcp-ubuntu.pkr.hcl
 
       - name: Run Packer for Ubuntu
         run: packer build gcp-ubuntu.pkr.hcl
 
   build-windows:
-    needs: setup
     runs-on: ubuntu-latest
+    permissions:
+      id-token: 'write'
+      contents: 'read'
+    
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Google Authentication
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: 'prj-ospacker-useast-dev-23295'
+          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
+
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
+
+      - name: Init Packer for Windows
+        run: packer init gcp-win.pkr.hcl
 
       - name: Run Packer for Windows
         run: packer build gcp-win.pkr.hcl
 
   build-sql:
-    needs: setup
     runs-on: ubuntu-latest
+    permissions:
+      id-token: 'write'
+      contents: 'read'
+    
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Google Authentication
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: 'prj-ospacker-useast-dev-23295'
+          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
+
       - name: Setup HashiCorp Packer
         uses: hashicorp/setup-packer@v3.0.0
+
+      - name: Init Packer for SQL
+        run: packer init gcp-sql.pkr.hcl
 
       - name: Run Packer for SQL
         run: packer build gcp-sql.pkr.hcl
