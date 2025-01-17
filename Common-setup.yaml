@@ -1,0 +1,37 @@
+name: Common Setup
+
+on:
+  workflow_call:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: 'write'  # This is necessary for authentication
+      contents: 'read'    # This is necessary for checkout
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Google Authentication
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: 'prj-ospacker-useast-dev-23295'  # Hardcoded project ID
+          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
+
+      - name: Setup HashiCorp Packer
+        uses: hashicorp/setup-packer@v3.0.0
+
+      - name: Init Packer for RHEL
+        run: packer init gcp-rhel.pkr.hcl  # Initialize the RHEL configuration
+
+      - name: Init Packer for Ubuntu
+        run: packer init gcp-ubuntu.pkr.hcl  # Initialize the Ubuntu configuration
+
+      - name: Init Packer for Windows
+        run: packer init gcp-win.pkr.hcl  # Initialize the Windows configuration
+
+      - name: Init Packer for SQL
+        run: packer init gcp-sql.pkr.hcl  # Initialize the SQL configuration
