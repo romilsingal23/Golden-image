@@ -1,9 +1,9 @@
 from google.cloud import compute_v1
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Configuration
 PROJECT_ID = "your-project-id"  # Replace with your GCP project ID
-DEPRECATION_STATE = "OBSOLETE"  # State to set the image to
+DEPRECATION_STATE = "OBSOLETE"
 EXPIRY_DAYS = 120  # 4 months = 120 days
 
 def get_old_images():
@@ -11,7 +11,7 @@ def get_old_images():
     image_client = compute_v1.ImagesClient()
     images = image_client.list(project=PROJECT_ID)
 
-    threshold_date = datetime.utcnow() - timedelta(days=EXPIRY_DAYS)
+    threshold_date = datetime.now(timezone.utc) - timedelta(days=EXPIRY_DAYS)
     old_images = []
 
     for image in images:
@@ -28,7 +28,7 @@ def obsolete_image(image_name):
 
     deprecation_status = compute_v1.DeprecationStatus(
         state=DEPRECATION_STATE,
-        obsolete=datetime.utcnow().isoformat() + "Z"
+        obsolete=datetime.now(timezone.utc).isoformat()
     )
 
     operation = image_client.deprecate(
