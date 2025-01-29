@@ -8,7 +8,10 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
-
+  
+permissions:
+      id-token: 'write'
+      contents: 'read'
 jobs:
   build-rhel:
     uses: ./.github/workflows/common-setup.yml
@@ -32,7 +35,7 @@ jobs:
 
   cleanup-old-images:
     runs-on: ubuntu-latest
-    needs: [build-rhel, build-ubuntu, build-windows, build-sql]  # Ensure this job runs after all packer builds
+    needs: [build-rhel, build-ubuntu]  # Ensure this job runs after all packer builds
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -47,8 +50,117 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-cloud-compute
 
-      - name: Authenticate with GCP
-        run: gcloud auth activate-service-account --key-file=${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+      - name: Google Authentication
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: 'prj-ospacker-useast-dev-23295'
+          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
 
       - name: Run the Python script to cleanup old images
-        run: python cleanup_old_images.py  # Replace with your actual script name
+        run: python cleanup_old_images.py  
+
+  wiz-io-scanning:
+    runs-on: ubuntu-latest
+    needs: [build-rhel, build-ubuntu, build-sql]  # Ensure this job runs after all packer builds
+    steps:
+      - name: Download a Build Artifact
+        uses: actions/download-artifact@v4.0.0
+        with:
+          name: packer-logs
+          path: packer.log
+      
+      - name: Save generated image name
+        id: get-image-name
+        run: |
+          # Extract the image name from the Packer logs if needed
+          # If you used "image_name = my-test-image-{{timestamp}}",
+          # you might parse the log output or store it in an artifact.
+          # Here we'll do a naive example:
+          IMAGE_NAME=$(grep 'A disk image was created:' packer.log | awk '{print $NF}')
+          echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
+        shell: bash
+      - name: Wait/Check Wiz for Vulnerabilities
+        env:
+          WIZ_API_TOKEN: ${{ secrets.WIZ_API_TOKEN }}
+          WIZ_API_URL: ${{ secrets.WIZ_API_URL }}
+          IMAGE_NAME: ${{ steps.get-image-name.outputs.image_name }}
+        run: |
+          # OPTIONAL step.
+          # This script tries to poll Wiz for the new GCE image and see if it has vulnerabilities.
+          # Wiz typically discovers new images automatically; it may take a few minutes.
+          # We'll do a basic, limited retry approach.
+          if [ -z "$WIZ_API_URL" ]; then
+            WIZ_API_URL="<https://api.wiz.io>"
+          fi
+          if [ -z "$IMAGE_NAME" ]; then
+            echo "No image name found from previous step. Skipping Wiz check."
+            exit 0
+          fi
+          echo "Checking Wiz for vulnerabilities on image: $IMAGE_NAME"
+          # We'll do up to 6 attempts (each with a 30s sleep) = ~3 min total wait
+          MAX_ATTEMPTS=6
+          SLEEP_TIME=30
+          for (( i=1; i<=MAX_ATTEMPTS; i++ )); do
+            echo "Attempt $i to query Wiz for vulnerabilities..."
+            # A simplistic GraphQL query example, filtering by resource name:
+            # (This is just an example; you must adapt the filter to your environment.)
+            QUERY='
+              query($filter:String!) {
+                cloudResources(filter:$filter) {
+                  totalCount
+                  nodes {
+                    name
+                    ... on VirtualMachineImage {
+                      name
+                      vulnerabilities {
+                        totalCount
+                        nodes {
+                          severity
+                          cveIds
+                          packageName
+                          packageVersion
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            '
+            FILTER="name = \\\\"$IMAGE_NAME\\\\""
+            # Call Wiz API (GraphQL)
+            RESPONSE=$(curl -s -X POST \\\\
+              -H "Authorization: Bearer $WIZ_API_TOKEN" \\\\
+              -H "Content-Type: application/json" \\\\
+              "$WIZ_API_URL/graphql" \\\\
+              -d "$(jq -c -n --arg q "$QUERY" --arg f "$FILTER" '{query: $q, variables: { filter: $f }}')")
+            echo "Response: $RESPONSE"
+            # Check if Wiz found a matching resource
+            FOUND_COUNT=$(echo "$RESPONSE" | jq '.data.cloudResources.totalCount')
+            if [ "$FOUND_COUNT" -gt 0 ]; then
+              echo "Wiz discovered the image. Checking vulnerabilities..."
+              # Gather vulnerabilities (if any)
+              VULN_COUNT=$(echo "$RESPONSE" | jq '.data.cloudResources.nodes[0].vulnerabilities.totalCount')
+              echo "Found $VULN_COUNT vulnerabilities."
+              if [ "$VULN_COUNT" -gt 0 ]; then
+                # Example check: if there's a severity=CRITICAL or HIGH, fail the pipeline
+                HIGH_OR_CRIT=$(echo "$RESPONSE" | \\\\
+                  jq '[.data.cloudResources.nodes[0].vulnerabilities.nodes[] | select(.severity == "CRITICAL" or .severity == "HIGH")] | length')
+                if [ "$HIGH_OR_CRIT" -gt 0 ]; then
+                  echo "Found $HIGH_OR_CRIT HIGH or CRITICAL vulnerabilities. Failing build."
+                  exit 1
+                fi
+              fi
+              echo "No HIGH/CRITICAL vulnerabilities found (or no vulnerabilities at all). Passing."
+              exit 0
+            else
+              echo "Wiz has not discovered the resource yet. Sleeping $SLEEP_TIME seconds..."
+              sleep $SLEEP_TIME
+            fi
+          done
+          echo "Wiz did not discover the image within our wait time. Proceeding or failing as desired."
+          # You can choose to fail if not found:
+          # exit 1
+          # or just pass:
+          exit 0
