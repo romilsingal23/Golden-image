@@ -33,5 +33,16 @@ jobs:
       - name: Init Packer
         run: packer init ${{ inputs.packer_file }}
 
+      - name: Enable Packer Logging
+        run: |
+          export PACKER_LOG=1
+          export PACKER_LOG_PATH=packer.log
+
       - name: Run Packer Build
         run: packer build ${{ inputs.packer_file }}
+
+      - name: Upload Packer Log (Optional for Debugging)
+        uses: actions/upload-artifact@v2
+        with:
+          name: packer-logs
+          path: packer.log
