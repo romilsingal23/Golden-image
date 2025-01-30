@@ -1,0 +1,72 @@
+name: OS Packer Pipeline
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: 'write'
+      contents: 'read'
+    
+    strategy:
+      matrix:
+        os: [rhel, ubuntu, win]  # OS variants
+        include:
+          - os: rhel
+            packer_file: gcp-rhel.pkr.hcl
+          - os: ubuntu
+            packer_file: gcp-ubuntu.pkr.hcl
+          - os: win
+            packer_file: gcp-win.pkr.hcl
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Google Authentication
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: 'prj-ospacker-useast-dev-23295'
+          service_account: 'sa-ospacker-us-4002@prj-ospacker-useast-dev-23295.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/463003052712/locations/global/workloadIdentityPools/wif-pool/providers/wif-provider'
+
+      - name: Setup HashiCorp Packer
+        uses: hashicorp/setup-packer@v3.0.0
+
+      - name: Initialize Packer for ${{ matrix.os }}
+        run: packer init ${{ matrix.packer_file }}
+
+      - name: Build ${{ matrix.os }} Image with Packer
+        env:
+          PACKER_LOG: 1
+          PACKER_LOG_PATH: packer-${{ matrix.os }}.log
+          DYNATRACE_API_TOKEN: ${{ secrets.DYNATRACE_API_TOKEN }}
+        run: packer build ${{ matrix.packer_file }}
+      
+      - name: Verify packer log for ${{ matrix.os }}
+        run: ls -la packer-${{ matrix.os }}.log
+
+      - name: Save generated image name for ${{ matrix.os }}
+        id: get-image-name
+        run: |
+          IMAGE_NAME=$(grep 'A disk image was created' packer-${{ matrix.os }}.log | awk '{print $NF}')
+          echo "image_name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure script is executable
+        run: chmod +x scripts/check_wiz_vulnerabilities.sh
+
+      - name: Check Wiz for Vulnerabilities in ${{ matrix.os }} image
+        run: scripts/check_wiz_vulnerabilities.sh
+        env:
+          WIZ_API_TOKEN: ${{ secrets.WIZ_API_TOKEN }}
+          WIZ_API_URL: ${{ secrets.WIZ_API_URL }}
+          IMAGE_NAME: ${{ steps.get-image-name.outputs.image_name }}
