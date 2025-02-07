@@ -1,0 +1,92 @@
+packer {
+  required_plugins {
+    googlecompute = {
+      version = ">= 1.0.0"
+      source  = "github.com/hashicorp/googlecompute"
+    }
+  }
+}
+
+locals {
+  timestamp = regex_replace(timestamp(), "[- TZ:]", "")
+}
+
+variable "source_image_family" {
+  type    = string
+  default = "rhel-9"
+}
+
+variable "project_id" {
+  type    = string
+  default = "prj-ospacker-useast-dev-23295"
+}
+
+variable "subnet" {
+  type    = string
+  default = "projects/prj-shrd-ntwk-3/regions/us-east4/subnetworks/sn-ue4-ospac-dev-1"
+}
+
+variable "zone" {
+  type    = string
+  default = "us-east4-a"
+}
+
+variable "dynatrace_api_token" { 
+  type    = string
+  default = env("DYNATRACE_API_TOKEN")
+}
+
+
+build {
+  sources = ["source.googlecompute.golden_image_build_specs"]
+
+  provisioner "shell" {
+    expect_disconnect = true
+    script            = "rhel-scripts/rhel-hardening.sh"
+  }
+  
+  /* 
+  provisioner "shell" {
+    expect_disconnect = true
+    script            = "rhel-scripts/install_dynatrace_agent.sh"
+    environment_vars = [
+	"DYNATRACE_API_TOKEN=${var.dynatrace_api_token}"
+	]
+  }
+*/
+}
+
+source "googlecompute" "golden_image_build_specs" {
+  project_id          = var.project_id
+  source_image_family = var.source_image_family # It always returns its latest image that is not deprecated
+  image_name          = "${var.source_image_family}-${local.timestamp}"
+  image_family        = "redhat-family"
+  image_labels        = { image_type : "golden-image" }
+  image_storage_locations = ["us-east4"]
+  machine_type        = "e2-small"
+  omit_external_ip    = true
+  use_internal_ip     = true
+  use_iap             = true
+  zone                = var.zone
+  subnetwork          = var.subnet
+  ssh_username        = "packer-user"
+  tags                = ["us-east4"]
+  disk_encryption_key {
+	kmsKeyName = "projects/prj-shrd-secu-5/locations/us-east4/keyRings/cmdk-key-ring/cryptoKeys/cmek-key/cryptoKeyVersions/1"
+	}
+  image_encryption_key {
+	kmsKeyName = "projects/prj-shrd-secu-5/locations/us-east4/keyRings/cmdk-key-ring/cryptoKeys/cmek-key/cryptoKeyVersions/1"
+	}
+  labels = {
+    appserviceid = "tbd"
+    appservicename = "gcp"
+    timestamp= "tbd"
+    iac = "packer"
+    datatype = "tbd"
+    costcenter = "tbd"
+    tierid = "tier-1"
+  }
+  metadata = {
+    ssh-keys = "packer:packer-user"
+  }
+}
